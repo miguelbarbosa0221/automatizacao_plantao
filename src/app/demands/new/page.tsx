@@ -9,11 +9,12 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
-import { Loader2, Send, Wand2, Copy, CheckCircle2 } from "lucide-react"
+import { Loader2, Send, Wand2, Copy, CheckCircle2, MapPin } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { addDemand } from "@/lib/demand-store"
+import { getCategories, getUnits, Category, Unit } from "@/lib/config-store"
 import { useRouter } from "next/navigation"
 
 export default function NewDemandPage() {
@@ -24,9 +25,25 @@ export default function NewDemandPage() {
   const { toast } = useToast()
   const router = useRouter()
 
+  // Dados das configurações
+  const [availableCategories, setAvailableCategories] = useState<Category[]>([])
+  const [availableUnits, setAvailableUnits] = useState<Unit[]>([])
+
+  // Estado do formulário
+  const [selectedUnit, setSelectedUnit] = useState("")
+  const [selectedSector, setSelectedSector] = useState("")
   const [category, setCategory] = useState("")
+  const [subcategory, setSubcategory] = useState("")
   const [subject, setSubject] = useState("")
   const [details, setDetails] = useState("")
+
+  useEffect(() => {
+    setAvailableCategories(getCategories())
+    setAvailableUnits(getUnits())
+  }, [])
+
+  const currentUnit = availableUnits.find(u => u.name === selectedUnit)
+  const currentCategory = availableCategories.find(c => c.name === category)
 
   const handleProcessFreeText = async () => {
     if (!freeText.trim()) {
@@ -46,13 +63,20 @@ export default function NewDemandPage() {
   }
 
   const handleProcessStructured = async () => {
-    if (!category || !subject || !details) {
-      toast({ title: "Erro", description: "Preencha todos os campos obrigatórios." });
+    if (!category || !subject || !details || !selectedUnit || !selectedSector) {
+      toast({ title: "Erro", description: "Preencha todos os campos obrigatórios (incluindo Unidade e Setor)." });
       return;
     }
     setLoading(true);
     try {
-      const textToProcess = `Categoria: ${category}\nAssunto: ${subject}\nDetalhes: ${details}`;
+      // Compõe um texto rico para o Gemini, incluindo a localização e subcategoria
+      const textToProcess = `
+        LOCALIZAÇÃO: Unidade ${selectedUnit}, Setor ${selectedSector}
+        CATEGORIA: ${category}
+        SUBCATEGORIA: ${subcategory || 'Não especificada'}
+        ASSUNTO: ${subject}
+        DETALHES DO ATENDIMENTO: ${details}
+      `;
       const output = await processFreeTextDemandWithGemini({ freeText: textToProcess });
       setResult(output);
       toast({ title: "Sucesso", description: "Dados estruturados e padronizados." });
@@ -104,56 +128,106 @@ export default function NewDemandPage() {
                 <Card className="border-none shadow-lg">
                   <CardHeader>
                     <CardTitle>Demanda Estruturada</CardTitle>
-                    <CardDescription>Preencha os campos para um registro mais organizado antes do processamento.</CardDescription>
+                    <CardDescription>Preencha os detalhes do atendimento para uma padronização precisa.</CardDescription>
                   </CardHeader>
-                  <CardContent className="space-y-4">
+                  <CardContent className="space-y-6">
+                    {/* Seção de Localização */}
+                    <div className="p-4 bg-accent/5 rounded-lg border border-accent/20 space-y-4">
+                      <div className="flex items-center gap-2 text-sm font-bold text-muted-foreground uppercase">
+                        <MapPin className="w-4 h-4" /> Origem da Demanda
+                      </div>
+                      <div className="grid gap-4 md:grid-cols-2">
+                        <div className="space-y-2">
+                          <Label>Unidade</Label>
+                          <Select onValueChange={setSelectedUnit} value={selectedUnit}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione a unidade" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {availableUnits.map(u => (
+                                <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-2">
+                          <Label>Setor</Label>
+                          <Select onValueChange={setSelectedSector} disabled={!selectedUnit}>
+                            <SelectTrigger>
+                              <SelectValue placeholder="Selecione o setor" />
+                            </SelectTrigger>
+                            <SelectContent>
+                              {currentUnit?.sectors.map(s => (
+                                <SelectItem key={s} value={s}>{s}</SelectItem>
+                              ))}
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Categoria</Label>
-                        <Select onValueChange={setCategory}>
+                        <Select onValueChange={setCategory} value={category}>
                           <SelectTrigger>
                             <SelectValue placeholder="Selecione uma categoria" />
                           </SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="Hardware">Hardware</SelectItem>
-                            <SelectItem value="Software">Software</SelectItem>
-                            <SelectItem value="Rede">Rede</SelectItem>
-                            <SelectItem value="Acessos">Acessos/Contas</SelectItem>
-                            <SelectItem value="Outros">Outros</SelectItem>
+                            {availableCategories.map(cat => (
+                              <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Assunto Breve</Label>
-                        <Input 
-                          placeholder="Ex: Impressora travada" 
-                          value={subject}
-                          onChange={(e) => setSubject(e.target.value)}
-                        />
+                        <Label>Subcategoria</Label>
+                        <Select onValueChange={setSubcategory} disabled={!category}>
+                          <SelectTrigger>
+                            <SelectValue placeholder="Opcional" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {currentCategory?.subcategories.map(sub => (
+                              <SelectItem key={sub} value={sub}>{sub}</SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
                       </div>
                     </div>
+
                     <div className="space-y-2">
-                      <Label>Detalhes do Atendimento</Label>
+                      <Label>Assunto Breve</Label>
+                      <Input 
+                        placeholder="Ex: Lentidão no acesso ao sistema" 
+                        value={subject}
+                        onChange={(e) => setSubject(e.target.value)}
+                      />
+                    </div>
+                    
+                    <div className="space-y-2">
+                      <Label>O que foi realizado?</Label>
                       <Textarea 
-                        placeholder="Descreva o que foi feito e qual era o problema..." 
-                        className="min-h-[100px]"
+                        placeholder="Descreva o problema e a solução aplicada..." 
+                        className="min-h-[120px]"
                         value={details}
                         onChange={(e) => setDetails(e.target.value)}
                       />
                     </div>
+
                     <Button 
-                      className="w-full gap-2 font-medium" 
+                      className="w-full gap-2 font-medium h-12" 
                       onClick={handleProcessStructured}
                       disabled={loading}
                     >
-                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                      Padronizar Demanda
+                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-5 h-5" />}
+                      Processar e Padronizar com IA
                     </Button>
                   </CardContent>
                 </Card>
               </TabsContent>
 
               <TabsContent value="free-text">
+                {/* ... (mantido igual ao anterior para brevidade) */}
                 <Card className="border-none shadow-lg">
                   <CardHeader>
                     <CardTitle>Demanda via Texto Livre</CardTitle>
@@ -171,11 +245,11 @@ export default function NewDemandPage() {
                       />
                     </div>
                     <Button 
-                      className="w-full gap-2 font-medium" 
+                      className="w-full gap-2 font-medium h-12" 
                       onClick={handleProcessFreeText}
                       disabled={loading}
                     >
-                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-5 h-5" />}
                       Processar com Gemini
                     </Button>
                   </CardContent>
@@ -216,10 +290,10 @@ export default function NewDemandPage() {
                       </div>
                     </div>
                     <div className="flex gap-4 pt-4">
-                      <Button className="flex-1 gap-2" variant="default" onClick={handleSave}>
+                      <Button className="flex-1 gap-2 h-11" variant="default" onClick={handleSave}>
                         <CheckCircle2 className="w-4 h-4" /> Finalizar e Salvar
                       </Button>
-                      <Button className="flex-1 gap-2 bg-secondary text-secondary-foreground hover:bg-secondary/80" onClick={copyToClipboard}>
+                      <Button className="flex-1 gap-2 h-11 bg-secondary text-secondary-foreground hover:bg-secondary/80" onClick={copyToClipboard}>
                         <Send className="w-4 h-4" /> Exportar Help Desk
                       </Button>
                     </div>

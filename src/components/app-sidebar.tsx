@@ -31,6 +31,11 @@ const items = [
     url: "/demands/history",
     icon: ClipboardList,
   },
+  {
+    title: "Configurações",
+    url: "/settings",
+    icon: Settings,
+  },
 ]
 
 export function AppSidebar() {
@@ -62,14 +67,9 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4 border-t border-border/50">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton>
-              <Settings className="w-4 h-4" />
-              <span>Configurações</span>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="text-[10px] text-muted-foreground text-center uppercase tracking-wider font-bold">
+          v1.2 - Powered by Gemini
+        </div>
       </SidebarFooter>
     </Sidebar>
   )
