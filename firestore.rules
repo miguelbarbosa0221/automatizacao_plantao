@@ -1,103 +1,31 @@
+
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-
-    /**
-     * SECURITY RULES DOCUMENTATION
-     * 
-     * Core Philosophy: 
-     * This ruleset enforces a strict user-ownership model. The security posture is built 
-     * around "Authorization Independence," where access is determined primarily by the 
-     * document's location within the path hierarchy, avoiding expensive cross-document lookups.
-     * 
-     * Data Structure: 
-     * All application data is organized hierarchically under the user's primary document:
-     * /users/{userId}/demands/{demandId}
-     * 
-     * Key Security Decisions:
-     * 1. Path-Based Ownership: The {userId} segment of the path is the primary source of 
-     *    truth for authorization. Users can only access paths where {userId} matches their UID.
-     * 2. Strict Privacy: There are no public collections. All data is private to the owner.
-     * 3. Relational Consistency: During creation, we verify that the document's internal 
-     *    'id' field matches the Firestore document ID to ensure data integrity.
-     * 4. Prototyping Flexibility: While authorization is strictly enforced (who can write), 
-     *    the schema itself (what is written) remains flexible to allow for rapid iteration.
-     * 
-     * Denormalization for Authorization:
-     * This model avoids 'get()' calls by nesting demands directly under the user who owns them.
-     */
-
-    // --- Global Helper Functions ---
-
-    /**
-     * @description Checks if the request is made by an authenticated user.
-     */
     function isSignedIn() {
       return request.auth != null;
     }
 
-    /**
-     * @description Checks if the authenticated user's UID matches the provided userId.
-     */
     function isOwner(userId) {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    /**
-     * @description Verifies ownership and ensures the document exists for state-changing operations.
-     */
-    function isExistingOwner(userId) {
-      return isOwner(userId) && resource != null;
-    }
-
-    /**
-     * @description Validates that critical relational fields remain immutable during updates.
-     */
-    function isDataImmutable(field) {
-      return request.resource.data[field] == resource.data[field];
-    }
-
-    // --- Collection Rules ---
-
-    /**
-     * @description Rules for the user root document. Allows users to manage their own profile.
-     * @path /users/{userId}
-     * @allow (get, create) Authenticated user where UID matches userId.
-     * @deny (list) Listing users is prohibited for privacy.
-     * @principle Restricts access to a user's own root document.
-     */
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow list: if false; // User listing is explicitly disallowed for privacy.
-      allow create: if isOwner(userId);
-      allow update, delete: if isExistingOwner(userId);
-
-      /**
-       * @description Rules for IT support demands. Access is strictly scoped to the owner's path.
-       * @path /users/{userId}/demands/{demandId}
-       * @allow (create) User adding a demand to their own collection with matching internal ID.
-       * @allow (list) User viewing their own history of demands.
-       * @deny (update) User attempting to change the demand ID after creation.
-       * @principle Enforces path-based ownership and relational integrity.
-       */
+      allow get, create: if isOwner(userId);
+      
       match /demands/{demandId} {
-        
-        // Read Permissions
-        allow get, list: if isOwner(userId);
-
-        // Write Permissions
-        allow create: if isOwner(userId) 
-                      && request.resource.data.id == demandId;
-        
-        allow update: if isExistingOwner(userId) 
-                      && isDataImmutable('id');
-        
-        allow delete: if isExistingOwner(userId);
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /categories/{categoryId} {
+        allow read, write: if isOwner(userId);
+      }
+      
+      match /units/{unitId} {
+        allow read, write: if isOwner(userId);
       }
     }
 
-    // --- Global Default Deny ---
-    // Explicitly deny any access to documents not covered by specific match blocks.
     match /{allPaths=**} {
       allow read, write: if false;
     }

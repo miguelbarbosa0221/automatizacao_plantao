@@ -1,20 +1,29 @@
+
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { PlusCircle, ClipboardList, Share2, ArrowRight } from "lucide-react"
+import { PlusCircle, ClipboardList, Share2, ArrowRight, Loader2 } from "lucide-react"
 import Link from "next/link"
-import { useEffect, useState } from "react"
-import { Demand, getDemands } from "@/lib/demand-store"
+import { useMemoFirebase, useCollection, useUser, useFirestore } from "@/firebase"
+import { collection, query, orderBy, limit } from "firebase/firestore"
 
 export default function Home() {
-  const [recentDemands, setRecentDemands] = useState<Demand[]>([])
+  const { user } = useUser();
+  const db = useFirestore();
 
-  useEffect(() => {
-    setRecentDemands(getDemands().slice(0, 5))
-  }, [])
+  const demandsQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return query(
+      collection(db, "users", user.uid, "demands"),
+      orderBy("timestamp", "desc"),
+      limit(5)
+    );
+  }, [db, user]);
+
+  const { data: recentDemands, isLoading } = useCollection(demandsQuery);
 
   return (
     <div className="flex h-screen bg-background">
@@ -28,12 +37,12 @@ export default function Home() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
             <Card className="border-none shadow-md bg-white">
               <CardHeader className="flex flex-row items-center justify-between pb-2 space-y-0">
-                <CardTitle className="text-sm font-medium">Atendimentos Hoje</CardTitle>
+                <CardTitle className="text-sm font-medium">Atendimentos Registrados</CardTitle>
                 <PlusCircle className="w-4 h-4 text-primary" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{recentDemands.length}</div>
-                <p className="text-xs text-muted-foreground">+2 desde a última hora</p>
+                <div className="text-2xl font-bold">{recentDemands?.length || 0}</div>
+                <p className="text-xs text-muted-foreground">Sincronizado com a nuvem</p>
               </CardContent>
             </Card>
             <Card className="border-none shadow-md bg-white">
@@ -42,7 +51,9 @@ export default function Home() {
                 <Share2 className="w-4 h-4 text-accent" />
               </CardHeader>
               <CardContent>
-                <div className="text-2xl font-bold">{recentDemands.filter(d => d.source === 'free-text').length}</div>
+                <div className="text-2xl font-bold">
+                  {recentDemands?.filter(d => d.source === 'free-text').length || 0}
+                </div>
                 <p className="text-xs text-muted-foreground">Otimizados para Help Desk</p>
               </CardContent>
             </Card>
@@ -69,11 +80,15 @@ export default function Home() {
               </Button>
             </div>
             
-            {recentDemands.length === 0 ? (
+            {isLoading ? (
+              <div className="flex justify-center py-12">
+                <Loader2 className="animate-spin text-primary" />
+              </div>
+            ) : !recentDemands || recentDemands.length === 0 ? (
               <Card className="p-12 text-center border-dashed border-2">
                 <div className="flex flex-col items-center gap-4">
                   <ClipboardList className="w-12 h-12 text-muted-foreground opacity-20" />
-                  <p className="text-muted-foreground">Nenhum chamado registrado ainda no plantão atual.</p>
+                  <p className="text-muted-foreground">Nenhum chamado registrado ainda no Firestore.</p>
                   <Button asChild>
                     <Link href="/demands/new">Registrar Primeira Demanda</Link>
                   </Button>

@@ -1,3 +1,4 @@
+
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -6,26 +7,34 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Search, Filter, Copy, ExternalLink } from "lucide-react"
-import { useEffect, useState } from "react"
-import { Demand, getDemands } from "@/lib/demand-store"
+import { Search, Filter, Copy, ExternalLink, Loader2 } from "lucide-react"
+import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
+import { collection, query, orderBy } from "firebase/firestore"
 
 export default function HistoryPage() {
-  const [demands, setDemands] = useState<Demand[]>([])
   const [search, setSearch] = useState("")
   const { toast } = useToast()
+  const db = useFirestore()
+  const { user } = useUser()
 
-  useEffect(() => {
-    setDemands(getDemands())
-  }, [])
+  const demandsQuery = useMemoFirebase(() => {
+    if (!db || !user) return null;
+    return query(
+      collection(db, "users", user.uid, "demands"),
+      orderBy("timestamp", "desc")
+    );
+  }, [db, user]);
 
-  const filteredDemands = demands.filter(d => 
+  const { data: demands, isLoading } = useCollection(demandsQuery);
+
+  const filteredDemands = (demands || []).filter(d => 
     d.title.toLowerCase().includes(search.toLowerCase()) || 
     d.description.toLowerCase().includes(search.toLowerCase())
   )
 
-  const copyToClipboard = (demand: Demand) => {
+  const copyToClipboard = (demand: any) => {
     const text = `Título: ${demand.title}\n\nDescrição Técnica:\n${demand.description}\n\nResolução:\n${demand.resolution}`;
     navigator.clipboard.writeText(text);
     toast({ title: "Copiado", description: "Dados do chamado prontos para o Help Desk." });
@@ -56,9 +65,13 @@ export default function HistoryPage() {
           </div>
 
           <div className="grid gap-4">
-            {filteredDemands.length === 0 ? (
+            {isLoading ? (
+              <div className="flex justify-center py-20">
+                <Loader2 className="animate-spin text-primary h-8 w-8" />
+              </div>
+            ) : filteredDemands.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
-                Nenhuma demanda encontrada com esses critérios.
+                Nenhuma demanda encontrada no banco de dados.
               </div>
             ) : (
               filteredDemands.map((demand) => (
