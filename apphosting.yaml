@@ -3,6 +3,7 @@ apiVersion: "v1"
 
 runConfig:
   region: "us-central1"
-  maxInstances: 10
-  memory: 2Gi
   cpu: 1
+  memory: 1Gi
+  maxInstances: 10
+  minInstances: 0
