@@ -1,35 +1,36 @@
 rules_version = '2';
-
-/**
- * PlantãoAI Security Rules
- *
- * Core Philosophy:
- * This ruleset implements a strict user-ownership model. The security posture is built on the principle 
- * of "Path-Based Authorization," where access to data is granted based on the user's presence in the 
- * document path itself.
- *
- * Data Structure:
- * All application data is organized hierarchically under a root /users/{userId} collection. 
- * Specifically, IT support tickets (Chamados) are stored at /users/{userId}/chamados/{chamadoId}.
- *
- * Key Security Decisions:
- * 1. Ownership Enforcement: Every read and write operation is scoped to the authenticated user's UID. 
- *    Cross-user data access is strictly forbidden at the database level.
- * 2. Authorization Independence: By nesting Chamados under the user document, we eliminate the need 
- *    for costly `get()` lookups. The path itself provides the necessary context for authorization.
- * 3. Prototyping Flexibility: While ownership is strictly enforced, the schema of the data (fields 
- *    like 'titulo', 'status', etc.) is not validated here to allow for rapid development iterations. 
- *    Only relational fields (like IDs) are validated for consistency.
- * 4. Denial by Default: Any path not explicitly defined in these rules is inaccessible.
- */
-
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // --- GLOBAL HELPER FUNCTIONS ---
+    /**
+     * SECURITY RULES DOCUMENTATION
+     * 
+     * Core Philosophy: 
+     * This ruleset enforces a strict user-ownership model. The security posture is built 
+     * around "Authorization Independence," where access is determined primarily by the 
+     * document's location within the path hierarchy, avoiding expensive cross-document lookups.
+     * 
+     * Data Structure: 
+     * All application data is organized hierarchically under the user's primary document:
+     * /users/{userId}/demands/{demandId}
+     * 
+     * Key Security Decisions:
+     * 1. Path-Based Ownership: The {userId} segment of the path is the primary source of 
+     *    truth for authorization. Users can only access paths where {userId} matches their UID.
+     * 2. Strict Privacy: There are no public collections. All data is private to the owner.
+     * 3. Relational Consistency: During creation, we verify that the document's internal 
+     *    'id' field matches the Firestore document ID to ensure data integrity.
+     * 4. Prototyping Flexibility: While authorization is strictly enforced (who can write), 
+     *    the schema itself (what is written) remains flexible to allow for rapid iteration.
+     * 
+     * Denormalization for Authorization:
+     * This model avoids 'get()' calls by nesting demands directly under the user who owns them.
+     */
+
+    // --- Global Helper Functions ---
 
     /**
-     * @description Checks if the request is from an authenticated user.
+     * @description Checks if the request is made by an authenticated user.
      */
     function isSignedIn() {
       return request.auth != null;
@@ -46,58 +47,59 @@ service cloud.firestore {
      * @description Verifies ownership and ensures the document exists for state-changing operations.
      */
     function isExistingOwner(userId) {
-      return resource != null && isOwner(userId);
+      return isOwner(userId) && resource != null;
     }
 
-    // --- COLLECTION RULES ---
+    /**
+     * @description Validates that critical relational fields remain immutable during updates.
+     */
+    function isDataImmutable(field) {
+      return request.resource.data[field] == resource.data[field];
+    }
+
+    // --- Collection Rules ---
 
     /**
-     * @description Rules for the root user document. Enables users to manage their own profile entry.
+     * @description Rules for the user root document. Allows users to manage their own profile.
      * @path /users/{userId}
-     * @allow Authenticated user (create) where UID matches path.
-     * @deny Any user (read/write) where UID does not match path.
-     * @principle Ownership.
+     * @allow (get, create) Authenticated user where UID matches userId.
+     * @deny (list) Listing users is prohibited for privacy.
+     * @principle Restricts access to a user's own root document.
      */
     match /users/{userId} {
-      allow get, list: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow list: if false; // User listing is explicitly disallowed for privacy.
       allow create: if isOwner(userId);
       allow update, delete: if isExistingOwner(userId);
 
       /**
-       * @description Rules for IT support tickets (Chamados).
-       * @path /users/{userId}/chamados/{chamadoId}
-       * @allow User 'abc' (list) their own chamados at /users/abc/chamados.
-       * @deny User 'abc' (get) a chamado belonging to user 'xyz'.
-       * @principle Relational Integrity and Ownership.
+       * @description Rules for IT support demands. Access is strictly scoped to the owner's path.
+       * @path /users/{userId}/demands/{demandId}
+       * @allow (create) User adding a demand to their own collection with matching internal ID.
+       * @allow (list) User viewing their own history of demands.
+       * @deny (update) User attempting to change the demand ID after creation.
+       * @principle Enforces path-based ownership and relational integrity.
        */
-      match /chamados/{chamadoId} {
-        // Read access: Users can only see their own tickets.
+      match /demands/{demandId} {
+        
+        // Read Permissions
         allow get, list: if isOwner(userId);
 
-        // Create: User must own the path AND provide a data ID that matches the document ID.
-        allow create: if isOwner(userId) && request.resource.data.id == chamadoId;
-
-        // Update: User must own the existing document and cannot change the internal ID.
-        allow update: if isExistingOwner(userId) && request.resource.data.id == resource.data.id;
-
-        // Delete: User must own the document.
+        // Write Permissions
+        allow create: if isOwner(userId) 
+                      && request.resource.data.id == demandId;
+        
+        allow update: if isExistingOwner(userId) 
+                      && isDataImmutable('id');
+        
         allow delete: if isExistingOwner(userId);
       }
     }
 
-    // --- DEFAULT DENY ---
-    // Explicitly deny any access to other collections or unspecified paths.
-    match /{path=**} {
+    // --- Global Default Deny ---
+    // Explicitly deny any access to documents not covered by specific match blocks.
+    match /{allPaths=**} {
       allow read, write: if false;
     }
   }
 }
-
-/**
- * ARCHITECTURAL NOTE: 
- * These rules are optimized for performance by avoiding `get()` and `exists()` calls,
- * relying instead on the inherent structure of the Firestore paths. This significantly 
- * reduces document read costs and improves latency for security checks.
- */
-
-// End of Rules
