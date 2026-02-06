@@ -27,10 +27,10 @@ const ProcessFreeTextDemandWithGeminiOutputSchema = z.object({
   title: z.string().describe('A concise title summarizing the IT support demand.'),
   description: z
     .string()
-    .describe('A detailed technical description of the IT support demand.'),
+    .describe('A brief technical summary of the problem.'),
   resolution: z
     .string()
-    .describe('A suggested resolution for the IT support demand.'),
+    .describe('A short summary of the resolution steps.'),
 });
 
 export type ProcessFreeTextDemandWithGeminiOutput = z.infer<
@@ -47,19 +47,19 @@ const processFreeTextDemandPrompt = ai.definePrompt({
   name: 'processFreeTextDemandPrompt',
   input: {schema: ProcessFreeTextDemandWithGeminiInputSchema},
   output: {schema: ProcessFreeTextDemandWithGeminiOutputSchema},
-  prompt: `Você é um assistente de IA especializado em processar demandas de suporte de TI.
-  Sua tarefa é extrair e estruturar informações de um texto livre fornecido pelo usuário.
+  prompt: `Você é um assistente de IA especializado em processar chamados de suporte de TI.
+  Sua tarefa é extrair informações de um texto livre e gerar um resumo extremamente CONCISO.
 
-  IMPORTANT: Todas as respostas (título, descrição e resolução) DEVEM ser escritas em Português do Brasil (pt-BR).
+  REGRAS OBRIGATÓRIAS:
+  1. Idioma: Use exclusivamente Português do Brasil (pt-BR).
+  2. Concisão: Seja o mais breve possível. Evite frases longas ou explicativas.
+  3. Título: Máximo de 8 palavras. Deve ser direto ao ponto (ex: "Troca de Toner - Impressora 2º Andar").
+  4. Descrição: Resuma o problema técnico em uma ou duas frases curtas.
+  5. Resolução: Resuma a ação tomada de forma objetiva.
 
-  Informações a extrair:
-  - title: Um título conciso que resume a demanda.
-  - description: Uma descrição técnica detalhada da demanda, focando no problema relatado.
-  - resolution: Uma sugestão de resolução ou os passos tomados para resolver o problema.
+  Texto livre para processar: {{{freeText}}}
 
-  Descrição em texto livre: {{{freeText}}}
-
-  Forneça a saída em formato estruturado. O campo "description" deve descrever o problema de forma técnica. O campo "resolution" deve explicar quais ações foram ou devem ser tomadas para resolver o problema.
+  Forneça a saída estruturada sem preâmbulos ou saudações.
 `,
 });
 
