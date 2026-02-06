@@ -3,7 +3,7 @@ apiVersion: "v1"
 
 runConfig:
   maxInstances: 2
-  memory: 1Gi
+  memory: 2Gi
   cpu: 1
 
-location: us-central1
+location: us-east1
