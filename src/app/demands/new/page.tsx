@@ -17,14 +17,13 @@ import { addDemand } from "@/lib/demand-store"
 import { useRouter } from "next/navigation"
 
 export default function NewDemandPage() {
-  const [activeTab, setActiveTab] = useState("free-text")
+  const [activeTab, setActiveTab] = useState("structured")
   const [loading, setLoading] = useState(false)
   const [result, setResult] = useState<{title: string, description: string, resolution: string} | null>(null)
   const [freeText, setFreeText] = useState("")
   const { toast } = useToast()
   const router = useRouter()
 
-  // Structured Form States
   const [category, setCategory] = useState("")
   const [subject, setSubject] = useState("")
   const [details, setDetails] = useState("")
@@ -97,39 +96,10 @@ export default function NewDemandPage() {
           <div className="space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
               <TabsList className="grid w-full grid-cols-2 mb-8">
-                <TabsTrigger value="free-text">Texto Livre</TabsTrigger>
                 <TabsTrigger value="structured">Interface Estruturada</TabsTrigger>
+                <TabsTrigger value="free-text">Texto Livre</TabsTrigger>
               </TabsList>
               
-              <TabsContent value="free-text">
-                <Card className="border-none shadow-lg">
-                  <CardHeader>
-                    <CardTitle>Demanda via Texto Livre</CardTitle>
-                    <CardDescription>Ideal para atendimentos verbais ou rápidos. Digite exatamente o que aconteceu.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="freeText">Descrição da ocorrência</Label>
-                      <Textarea 
-                        id="freeText" 
-                        placeholder="Ex: O usuário João da contabilidade ligou dizendo que a impressora HP do 2º andar está com papel preso e não consegue imprimir nada." 
-                        className="min-h-[150px]"
-                        value={freeText}
-                        onChange={(e) => setFreeText(e.target.value)}
-                      />
-                    </div>
-                    <Button 
-                      className="w-full gap-2 font-medium" 
-                      onClick={handleProcessFreeText}
-                      disabled={loading}
-                    >
-                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-4 h-4" />}
-                      Processar com Gemini
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
               <TabsContent value="structured">
                 <Card className="border-none shadow-lg">
                   <CardHeader>
@@ -178,6 +148,35 @@ export default function NewDemandPage() {
                     >
                       {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-4 h-4" />}
                       Padronizar Demanda
+                    </Button>
+                  </CardContent>
+                </Card>
+              </TabsContent>
+
+              <TabsContent value="free-text">
+                <Card className="border-none shadow-lg">
+                  <CardHeader>
+                    <CardTitle>Demanda via Texto Livre</CardTitle>
+                    <CardDescription>Ideal para atendimentos verbais ou rápidos. Digite exatamente o que aconteceu.</CardDescription>
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <div className="space-y-2">
+                      <Label htmlFor="freeText">Descrição da ocorrência</Label>
+                      <Textarea 
+                        id="freeText" 
+                        placeholder="Ex: O usuário João da contabilidade ligou dizendo que a impressora HP do 2º andar está com papel preso e não consegue imprimir nada." 
+                        className="min-h-[150px]"
+                        value={freeText}
+                        onChange={(e) => setFreeText(e.target.value)}
+                      />
+                    </div>
+                    <Button 
+                      className="w-full gap-2 font-medium" 
+                      onClick={handleProcessFreeText}
+                      disabled={loading}
+                    >
+                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-4 h-4" />}
+                      Processar com Gemini
                     </Button>
                   </CardContent>
                 </Card>
