@@ -47,16 +47,19 @@ const processFreeTextDemandPrompt = ai.definePrompt({
   name: 'processFreeTextDemandPrompt',
   input: {schema: ProcessFreeTextDemandWithGeminiInputSchema},
   output: {schema: ProcessFreeTextDemandWithGeminiOutputSchema},
-  prompt: `You are an AI assistant specialized in processing IT support demands.
-  Given a free-text description of a demand, your task is to extract the following information:
+  prompt: `Você é um assistente de IA especializado em processar demandas de suporte de TI.
+  Sua tarefa é extrair e estruturar informações de um texto livre fornecido pelo usuário.
 
-  - title: A concise title summarizing the demand.
-  - description: A detailed technical description of the demand.
-  - resolution: A suggested resolution for the demand.
+  IMPORTANT: Todas as respostas (título, descrição e resolução) DEVEM ser escritas em Português do Brasil (pt-BR).
 
-  Free-text description: {{{freeText}}}
+  Informações a extrair:
+  - title: Um título conciso que resume a demanda.
+  - description: Uma descrição técnica detalhada da demanda, focando no problema relatado.
+  - resolution: Uma sugestão de resolução ou os passos tomados para resolver o problema.
 
-  Provide the output in a structured format.  The "description" field should describe steps taken to diagnose the problem and the root cause discovered.  The "resolution" field should explain what actions must be taken to resolve the problem.
+  Descrição em texto livre: {{{freeText}}}
+
+  Forneça a saída em formato estruturado. O campo "description" deve descrever o problema de forma técnica. O campo "resolution" deve explicar quais ações foram ou devem ser tomadas para resolver o problema.
 `,
 });
 
