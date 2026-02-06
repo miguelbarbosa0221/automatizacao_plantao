@@ -10,7 +10,7 @@ import { Input } from "@/components/ui/input"
 import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
 import { Loader2, Send, Wand2, Copy, CheckCircle2, MapPin } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -29,33 +29,33 @@ export default function NewDemandPage() {
   const db = useFirestore()
   const { user } = useUser()
 
-  // Dados do Firestore
+  // Queries memorizadas para o Firestore
   const categoriesQuery = useMemoFirebase(() => {
     if (!db || !user) return null;
     return collection(db, "users", user.uid, "categories");
-  }, [db, user]);
+  }, [db, user?.uid]);
 
   const unitsQuery = useMemoFirebase(() => {
     if (!db || !user) return null;
     return collection(db, "users", user.uid, "units");
-  }, [db, user]);
+  }, [db, user?.uid]);
 
-  const { data: categories } = useCollection(categoriesQuery);
-  const { data: units } = useCollection(unitsQuery);
+  const { data: categories, isLoading: isCatLoading } = useCollection(categoriesQuery);
+  const { data: units, isLoading: isUnitLoading } = useCollection(unitsQuery);
 
-  const activeCategories = categories?.filter(c => c.active) || [];
-  const activeUnits = units?.filter(u => u.active) || [];
+  const activeCategories = useMemo(() => categories?.filter(c => c.active) || [], [categories]);
+  const activeUnits = useMemo(() => units?.filter(u => u.active) || [], [units]);
 
   // Estado do formulário
-  const [selectedUnit, setSelectedUnit] = useState("")
+  const [selectedUnitName, setSelectedUnitName] = useState("")
   const [selectedSector, setSelectedSector] = useState("")
-  const [category, setCategory] = useState("")
+  const [selectedCategoryName, setSelectedCategoryName] = useState("")
   const [subcategory, setSubcategory] = useState("")
   const [subject, setSubject] = useState("")
   const [details, setDetails] = useState("")
 
-  const currentUnit = activeUnits.find(u => u.name === selectedUnit)
-  const currentCategory = activeCategories.find(c => c.name === category)
+  const currentUnit = useMemo(() => activeUnits.find(u => u.name === selectedUnitName), [activeUnits, selectedUnitName]);
+  const currentCategory = useMemo(() => activeCategories.find(c => c.name === selectedCategoryName), [activeCategories, selectedCategoryName]);
 
   const handleProcessFreeText = async () => {
     if (!freeText.trim()) {
@@ -75,15 +75,15 @@ export default function NewDemandPage() {
   }
 
   const handleProcessStructured = async () => {
-    if (!category || !subject || !details || !selectedUnit || !selectedSector) {
+    if (!selectedCategoryName || !subject || !details || !selectedUnitName || !selectedSector) {
       toast({ title: "Erro", description: "Preencha todos os campos obrigatórios." });
       return;
     }
     setLoading(true);
     try {
       const textToProcess = `
-        LOCALIZAÇÃO: Unidade ${selectedUnit}, Setor ${selectedSector}
-        CATEGORIA: ${category}
+        LOCALIZAÇÃO: Unidade ${selectedUnitName}, Setor ${selectedSector}
+        CATEGORIA: ${selectedCategoryName}
         SUBCATEGORIA: ${subcategory || 'Não especificada'}
         ASSUNTO: ${subject}
         DETALHES DO ATENDIMENTO: ${details}
@@ -108,7 +108,7 @@ export default function NewDemandPage() {
       id: demandId,
       timestamp: new Date().toISOString(),
       source: activeTab as 'structured' | 'free-text',
-      category: activeTab === 'structured' ? category : 'Geral'
+      category: activeTab === 'structured' ? selectedCategoryName : 'Geral'
     };
 
     setDocumentNonBlocking(demandRef, newDemand, { merge: true });
@@ -153,26 +153,26 @@ export default function NewDemandPage() {
                       <div className="grid gap-4 md:grid-cols-2">
                         <div className="space-y-2">
                           <Label>Unidade</Label>
-                          <Select onValueChange={setSelectedUnit} value={selectedUnit}>
+                          <Select onValueChange={setSelectedUnitName} value={selectedUnitName}>
                             <SelectTrigger>
-                              <SelectValue placeholder="Selecione a unidade" />
+                              <SelectValue placeholder={isUnitLoading ? "Carregando..." : "Selecione a unidade"} />
                             </SelectTrigger>
                             <SelectContent>
                               {activeUnits.map(u => (
                                 <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>
                               ))}
-                              {activeUnits.length === 0 && <div className="p-2 text-xs text-center">Nenhuma unidade ativa</div>}
+                              {!isUnitLoading && activeUnits.length === 0 && <div className="p-2 text-xs text-center text-muted-foreground">Vá em Configurações para cadastrar unidades</div>}
                             </SelectContent>
                           </Select>
                         </div>
                         <div className="space-y-2">
                           <Label>Setor</Label>
-                          <Select onValueChange={setSelectedSector} disabled={!selectedUnit} value={selectedSector}>
+                          <Select onValueChange={setSelectedSector} disabled={!selectedUnitName} value={selectedSector}>
                             <SelectTrigger>
                               <SelectValue placeholder="Selecione o setor" />
                             </SelectTrigger>
                             <SelectContent>
-                              {currentUnit?.sectors.map(s => (
+                              {currentUnit?.sectors?.map(s => (
                                 <SelectItem key={s} value={s}>{s}</SelectItem>
                               ))}
                             </SelectContent>
@@ -184,26 +184,26 @@ export default function NewDemandPage() {
                     <div className="grid gap-4 md:grid-cols-2">
                       <div className="space-y-2">
                         <Label>Categoria</Label>
-                        <Select onValueChange={setCategory} value={category}>
+                        <Select onValueChange={setSelectedCategoryName} value={selectedCategoryName}>
                           <SelectTrigger>
-                            <SelectValue placeholder="Selecione uma categoria" />
+                            <SelectValue placeholder={isCatLoading ? "Carregando..." : "Selecione uma categoria"} />
                           </SelectTrigger>
                           <SelectContent>
                             {activeCategories.map(cat => (
                               <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
                             ))}
-                            {activeCategories.length === 0 && <div className="p-2 text-xs text-center">Nenhuma categoria ativa</div>}
+                            {!isCatLoading && activeCategories.length === 0 && <div className="p-2 text-xs text-center text-muted-foreground">Vá em Configurações para cadastrar categorias</div>}
                           </SelectContent>
                         </Select>
                       </div>
                       <div className="space-y-2">
                         <Label>Subcategoria</Label>
-                        <Select onValueChange={setSubcategory} disabled={!category} value={subcategory}>
+                        <Select onValueChange={setSubcategory} disabled={!selectedCategoryName} value={subcategory}>
                           <SelectTrigger>
                             <SelectValue placeholder="Opcional" />
                           </SelectTrigger>
                           <SelectContent>
-                            {currentCategory?.subcategories.map(sub => (
+                            {currentCategory?.subcategories?.map(sub => (
                               <SelectItem key={sub} value={sub}>{sub}</SelectItem>
                             ))}
                           </SelectContent>
