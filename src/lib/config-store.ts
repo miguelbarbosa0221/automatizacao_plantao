@@ -53,6 +53,11 @@ export function addCategory(name: string, subcategories: string[]) {
   return getCategories(true);
 }
 
+export function updateCategory(id: string, name: string, subcategories: string[]) {
+  categories = categories.map(c => c.id === id ? { ...c, name, subcategories } : c);
+  return getCategories(true);
+}
+
 export function toggleCategoryStatus(id: string, active: boolean) {
   categories = categories.map(c => c.id === id ? { ...c, active } : c);
   return getCategories(true);
@@ -71,6 +76,11 @@ export function addUnit(name: string, sectors: string[]) {
     active: true
   };
   units = [...units, newUnit];
+  return getUnits(true);
+}
+
+export function updateUnit(id: string, name: string, sectors: string[]) {
+  units = units.map(u => u.id === id ? { ...u, name, sectors } : u);
   return getUnits(true);
 }
 

@@ -2,21 +2,23 @@
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
-import { Plus, Trash2, Building2, Tags, RotateCcw, X, AlertCircle } from "lucide-react"
+import { Plus, Trash2, Building2, Tags, RotateCcw, X, Pencil, Save } from "lucide-react"
 import { useState, useEffect } from "react"
 import { 
   getCategories, 
   getUnits, 
   addCategory, 
+  updateCategory,
   toggleCategoryStatus, 
   deleteCategoryPermanently,
   addUnit, 
+  updateUnit,
   toggleUnitStatus, 
   deleteUnitPermanently,
   Category, 
@@ -34,27 +36,48 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog"
 
 export default function SettingsPage() {
   const [categories, setCategories] = useState<Category[]>([])
   const [units, setUnits] = useState<Unit[]>([])
   const { toast } = useToast()
 
-  // Estados para os formulários
+  // Estados para nova Categoria
   const [newCatName, setNewCatName] = useState("")
   const [catSubsList, setCatSubsList] = useState<string[]>([])
   const [currentSub, setCurrentSub] = useState("")
 
+  // Estados para nova Unidade
   const [newUnitName, setNewUnitName] = useState("")
   const [unitSectorsList, setUnitSectorsList] = useState<string[]>([])
   const [currentSector, setCurrentSector] = useState("")
+
+  // Estados para Edição
+  const [editingCategory, setEditingCategory] = useState<Category | null>(null)
+  const [editCatName, setEditCatName] = useState("")
+  const [editCatSubs, setEditCatSubs] = useState<string[]>([])
+  const [editCurrentSub, setEditCurrentSub] = useState("")
+
+  const [editingUnit, setEditingUnit] = useState<Unit | null>(null)
+  const [editUnitName, setEditUnitName] = useState("")
+  const [editUnitSectors, setEditUnitSectors] = useState<string[]>([])
+  const [editCurrentSector, setEditCurrentSector] = useState("")
 
   useEffect(() => {
     setCategories(getCategories(true))
     setUnits(getUnits(true))
   }, [])
 
-  // Gerenciamento de Categoria
+  // CRUD Categoria
   const addSubToList = () => {
     if (currentSub.trim() && !catSubsList.includes(currentSub.trim())) {
       setCatSubsList([...catSubsList, currentSub.trim()])
@@ -74,7 +97,22 @@ export default function SettingsPage() {
     toast({ title: "Sucesso", description: "Categoria adicionada!" });
   }
 
-  // Gerenciamento de Unidade
+  const startEditCategory = (cat: Category) => {
+    setEditingCategory(cat);
+    setEditCatName(cat.name);
+    setEditCatSubs([...cat.subcategories]);
+    setEditCurrentSub("");
+  }
+
+  const handleUpdateCategory = () => {
+    if (!editingCategory || !editCatName.trim()) return;
+    const updated = updateCategory(editingCategory.id, editCatName, editCatSubs);
+    setCategories(updated);
+    setEditingCategory(null);
+    toast({ title: "Sucesso", description: "Categoria atualizada!" });
+  }
+
+  // CRUD Unidade
   const addSectorToList = () => {
     if (currentSector.trim() && !unitSectorsList.includes(currentSector.trim())) {
       setUnitSectorsList([...unitSectorsList, currentSector.trim()])
@@ -92,6 +130,21 @@ export default function SettingsPage() {
     setNewUnitName("");
     setUnitSectorsList([]);
     toast({ title: "Sucesso", description: "Unidade adicionada!" });
+  }
+
+  const startEditUnit = (unit: Unit) => {
+    setEditingUnit(unit);
+    setEditUnitName(unit.name);
+    setEditUnitSectors([...unit.sectors]);
+    setEditCurrentSector("");
+  }
+
+  const handleUpdateUnit = () => {
+    if (!editingUnit || !editUnitName.trim()) return;
+    const updated = updateUnit(editingUnit.id, editUnitName, editUnitSectors);
+    setUnits(updated);
+    setEditingUnit(null);
+    toast({ title: "Sucesso", description: "Unidade atualizada!" });
   }
 
   return (
@@ -161,26 +214,79 @@ export default function SettingsPage() {
                     <ScrollArea className="h-[400px]">
                       <div className="space-y-2">
                         {categories.filter(c => c.active).map(cat => (
-                          <div key={cat.id} className="p-3 border rounded-md flex justify-between items-center">
+                          <div key={cat.id} className="p-3 border rounded-md flex justify-between items-center bg-card">
                             <div>
                               <div className="font-bold">{cat.name}</div>
                               <div className="text-[10px] text-muted-foreground">{cat.subcategories.join(", ")}</div>
                             </div>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Confirmar Desativação?</AlertDialogTitle>
-                                  <AlertDialogDescription>A categoria "{cat.name}" será movida para a lixeira.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => setCategories(toggleCategoryStatus(cat.id, false))}>Desativar</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            <div className="flex gap-1">
+                              <Dialog open={editingCategory?.id === cat.id} onOpenChange={(open) => !open && setEditingCategory(null)}>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => startEditCategory(cat)}><Pencil className="w-4 h-4" /></Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle>Editar Categoria</DialogTitle>
+                                    <DialogDescription>Atualize o nome e gerencie subcategorias.</DialogDescription>
+                                  </DialogHeader>
+                                  <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                      <Label>Nome</Label>
+                                      <Input value={editCatName} onChange={(e) => setEditCatName(e.target.value)} />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Subcategorias</Label>
+                                      <div className="flex gap-2">
+                                        <Input 
+                                          placeholder="Nova sub..." 
+                                          value={editCurrentSub} 
+                                          onChange={(e) => setEditCurrentSub(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && editCurrentSub.trim()) {
+                                              setEditCatSubs([...editCatSubs, editCurrentSub.trim()]);
+                                              setEditCurrentSub("");
+                                            }
+                                          }}
+                                        />
+                                        <Button variant="secondary" onClick={() => {
+                                          if (editCurrentSub.trim()) {
+                                            setEditCatSubs([...editCatSubs, editCurrentSub.trim()]);
+                                            setEditCurrentSub("");
+                                          }
+                                        }}><Plus className="w-4 h-4" /></Button>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 mt-2">
+                                        {editCatSubs.map(s => (
+                                          <span key={s} className="bg-primary/10 text-primary px-2 py-1 rounded-md text-xs flex items-center gap-1">
+                                            {s} <X className="w-3 h-3 cursor-pointer" onClick={() => setEditCatSubs(editCatSubs.filter(i => i !== s))} />
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setEditingCategory(null)}>Cancelar</Button>
+                                    <Button onClick={handleUpdateCategory} className="gap-2"><Save className="w-4 h-4" /> Salvar Alterações</Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Confirmar Desativação?</AlertDialogTitle>
+                                    <AlertDialogDescription>A categoria "{cat.name}" será movida para a lixeira.</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => setCategories(toggleCategoryStatus(cat.id, false))}>Desativar</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
                           </div>
                         ))}
                       </div>
@@ -235,26 +341,79 @@ export default function SettingsPage() {
                     <ScrollArea className="h-[400px]">
                       <div className="space-y-2">
                         {units.filter(u => u.active).map(unit => (
-                          <div key={unit.id} className="p-3 border rounded-md flex justify-between items-center">
+                          <div key={unit.id} className="p-3 border rounded-md flex justify-between items-center bg-card">
                             <div>
                               <div className="font-bold">{unit.name}</div>
                               <div className="text-[10px] text-muted-foreground">{unit.sectors.join(", ")}</div>
                             </div>
-                            <AlertDialog>
-                              <AlertDialogTrigger asChild>
-                                <Button variant="ghost" size="icon" className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
-                              </AlertDialogTrigger>
-                              <AlertDialogContent>
-                                <AlertDialogHeader>
-                                  <AlertDialogTitle>Confirmar Desativação?</AlertDialogTitle>
-                                  <AlertDialogDescription>A unidade "{unit.name}" será movida para a lixeira.</AlertDialogDescription>
-                                </AlertDialogHeader>
-                                <AlertDialogFooter>
-                                  <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                                  <AlertDialogAction onClick={() => setUnits(toggleUnitStatus(unit.id, false))}>Desativar</AlertDialogAction>
-                                </AlertDialogFooter>
-                              </AlertDialogContent>
-                            </AlertDialog>
+                            <div className="flex gap-1">
+                              <Dialog open={editingUnit?.id === unit.id} onOpenChange={(open) => !open && setEditingUnit(null)}>
+                                <DialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" onClick={() => startEditUnit(unit)}><Pencil className="w-4 h-4" /></Button>
+                                </DialogTrigger>
+                                <DialogContent className="max-w-md">
+                                  <DialogHeader>
+                                    <DialogTitle>Editar Unidade</DialogTitle>
+                                    <DialogDescription>Atualize o nome e gerencie setores.</DialogDescription>
+                                  </DialogHeader>
+                                  <div className="space-y-4 py-4">
+                                    <div className="space-y-2">
+                                      <Label>Nome</Label>
+                                      <Input value={editUnitName} onChange={(e) => setEditUnitName(e.target.value)} />
+                                    </div>
+                                    <div className="space-y-2">
+                                      <Label>Setores</Label>
+                                      <div className="flex gap-2">
+                                        <Input 
+                                          placeholder="Novo setor..." 
+                                          value={editCurrentSector} 
+                                          onChange={(e) => setEditCurrentSector(e.target.value)}
+                                          onKeyDown={(e) => {
+                                            if (e.key === 'Enter' && editCurrentSector.trim()) {
+                                              setEditUnitSectors([...editUnitSectors, editCurrentSector.trim()]);
+                                              setEditCurrentSector("");
+                                            }
+                                          }}
+                                        />
+                                        <Button variant="secondary" onClick={() => {
+                                          if (editCurrentSector.trim()) {
+                                            setEditUnitSectors([...editUnitSectors, editCurrentSector.trim()]);
+                                            setEditCurrentSector("");
+                                          }
+                                        }}><Plus className="w-4 h-4" /></Button>
+                                      </div>
+                                      <div className="flex flex-wrap gap-2 mt-2">
+                                        {editUnitSectors.map(s => (
+                                          <span key={s} className="bg-accent/10 text-accent-foreground px-2 py-1 rounded-md text-xs flex items-center gap-1">
+                                            {s} <X className="w-3 h-3 cursor-pointer" onClick={() => setEditUnitSectors(editUnitSectors.filter(i => i !== s))} />
+                                          </span>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  </div>
+                                  <DialogFooter>
+                                    <Button variant="outline" onClick={() => setEditingUnit(null)}>Cancelar</Button>
+                                    <Button onClick={handleUpdateUnit} className="gap-2"><Save className="w-4 h-4" /> Salvar Alterações</Button>
+                                  </DialogFooter>
+                                </DialogContent>
+                              </Dialog>
+
+                              <AlertDialog>
+                                <AlertDialogTrigger asChild>
+                                  <Button variant="ghost" size="icon" className="text-destructive"><Trash2 className="w-4 h-4" /></Button>
+                                </AlertDialogTrigger>
+                                <AlertDialogContent>
+                                  <AlertDialogHeader>
+                                    <AlertDialogTitle>Confirmar Desativação?</AlertDialogTitle>
+                                    <AlertDialogDescription>A unidade "{unit.name}" será movida para a lixeira.</AlertDialogDescription>
+                                  </AlertDialogHeader>
+                                  <AlertDialogFooter>
+                                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                                    <AlertDialogAction onClick={() => setUnits(toggleUnitStatus(unit.id, false))}>Desativar</AlertDialogAction>
+                                  </AlertDialogFooter>
+                                </AlertDialogContent>
+                              </AlertDialog>
+                            </div>
                           </div>
                         ))}
                       </div>
