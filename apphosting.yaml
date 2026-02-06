@@ -2,8 +2,6 @@ kind: "AppHostingYaml"
 apiVersion: "v1"
 
 runConfig:
-  maxInstances: 2
-  memory: 2Gi
+  maxInstances: 10
+  memory: 1Gi
   cpu: 1
-
-location: us-east1
