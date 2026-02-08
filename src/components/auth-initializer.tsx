@@ -15,7 +15,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
 
-  // Garante que o componente só processe redirecionamentos após a montagem no cliente
+  // Garante que o componente só processe redirecionamentos e renderizações complexas após a montagem no cliente
   useEffect(() => {
     setIsMounted(true);
   }, []);
@@ -52,8 +52,13 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
     }
   }, [user, isUserLoading, auth, db, profile, pathname, router, isMounted]);
 
-  // Durante a hidratação e carregamento, exibe a tela de validação
-  if (!isMounted || isUserLoading) {
+  // Prevenção de Hydration Error: Não renderiza nada até que o cliente esteja montado
+  if (!isMounted) {
+    return null;
+  }
+
+  // Durante o carregamento do estado do usuário, exibe a tela de validação
+  if (isUserLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
