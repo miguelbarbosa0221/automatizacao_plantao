@@ -66,21 +66,21 @@
     "providers": ["password", "google"]
   },
   "firestore": {
-    "/users/{userId}/profile": {
+    "/users/{userId}/profile/profileDoc": {
       "schema": "#/backend/entities/Profile",
       "description": "Perfil e permissões do usuário."
     },
     "/users/{userId}/demands/{demandId}": {
       "schema": "#/backend/entities/Demand",
-      "description": "Histórico de chamados do usuário."
+      "description": "Histórico privado de chamados do usuário."
     },
     "/categories/{categoryId}": {
       "schema": "#/backend/entities/Category",
-      "description": "Categorias globais compartilhadas por toda a organização."
+      "description": "Catálogo global de categorias (Shared Root Collection)."
     },
     "/units/{unitId}": {
       "schema": "#/backend/entities/Unit",
-      "description": "Unidades e setores globais compartilhados por toda a organização."
+      "description": "Catálogo global de unidades (Shared Root Collection)."
     }
   }
 }

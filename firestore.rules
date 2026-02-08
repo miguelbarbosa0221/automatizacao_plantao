@@ -21,10 +21,12 @@ service cloud.firestore {
 
     // Coleções Privadas por Usuário
     match /users/{userId} {
-      allow get, create: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow create: if isSignedIn(); // Permite criar o próprio documento de usuário no login
       
-      match /profile/{docId} {
-        allow read, write: if isOwner(userId);
+      match /profile/profileDoc {
+        allow read: if isOwner(userId);
+        allow write: if isOwner(userId) || isAdmin(request.auth.uid);
       }
 
       match /demands/{demandId} {
@@ -32,7 +34,7 @@ service cloud.firestore {
       }
     }
 
-    // Coleções Globais da Organização (Configurações)
+    // Coleções Globais da Organização (Root Collections)
     match /categories/{categoryId} {
       allow read: if isSignedIn();
       allow write: if isAdmin(request.auth.uid);
