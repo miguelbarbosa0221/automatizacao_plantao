@@ -49,19 +49,34 @@
         "active": { "type": "boolean" }
       },
       "required": ["id", "name", "sectors", "active"]
+    },
+    "Profile": {
+      "title": "Profile",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string" },
+        "role": { "type": "string", "enum": ["admin", "user"] },
+        "email": { "type": "string" },
+        "displayName": { "type": "string" }
+      },
+      "required": ["uid", "role"]
     }
   },
   "auth": {
-    "providers": ["anonymous"]
+    "providers": ["anonymous", "google"]
   },
   "firestore": {
+    "/users/{userId}/profile": {
+      "schema": "#/backend/entities/Profile",
+      "description": "Perfil e permissões do usuário."
+    },
     "/users/{userId}/demands/{demandId}": {
       "schema": "#/backend/entities/Demand",
       "description": "Histórico de chamados do usuário."
     },
     "/users/{userId}/categories/{categoryId}": {
       "schema": "#/backend/entities/Category",
-      "description": "Categorias personalizadas do usuário com subcategorias e itens."
+      "description": "Categorias personalizadas do usuário."
     },
     "/users/{userId}/units/{unitId}": {
       "schema": "#/backend/entities/Unit",

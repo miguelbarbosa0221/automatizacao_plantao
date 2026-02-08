@@ -1,6 +1,7 @@
+
 "use client"
 
-import { Activity, ClipboardList, PlusCircle, Settings } from "lucide-react"
+import { Activity, ClipboardList, PlusCircle, Settings, ShieldCheck, User } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -14,32 +15,39 @@ import {
 } from "@/components/ui/sidebar"
 import Link from "next/link"
 import { usePathname } from "next/navigation"
-
-const items = [
-  {
-    title: "Dashboard",
-    url: "/",
-    icon: Activity,
-  },
-  {
-    title: "Nova Demanda",
-    url: "/demands/new",
-    icon: PlusCircle,
-  },
-  {
-    title: "Histórico",
-    url: "/demands/history",
-    icon: ClipboardList,
-  },
-  {
-    title: "Configurações",
-    url: "/settings",
-    icon: Settings,
-  },
-]
+import { useUser } from "@/firebase"
+import { Badge } from "@/components/ui/badge"
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const { isAdmin, profile } = useUser()
+
+  const items = [
+    {
+      title: "Dashboard",
+      url: "/",
+      icon: Activity,
+    },
+    {
+      title: "Nova Demanda",
+      url: "/demands/new",
+      icon: PlusCircle,
+    },
+    {
+      title: "Histórico",
+      url: "/demands/history",
+      icon: ClipboardList,
+    },
+  ]
+
+  // Adiciona configurações apenas para administradores
+  if (isAdmin) {
+    items.push({
+      title: "Configurações",
+      url: "/settings",
+      icon: Settings,
+    })
+  }
 
   return (
     <Sidebar className="border-r border-border/50">
@@ -66,9 +74,18 @@ export function AppSidebar() {
           </SidebarMenu>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4 border-t border-border/50">
+      <SidebarFooter className="p-4 border-t border-border/50 space-y-4">
+        <div className="flex flex-col gap-2 p-2 bg-accent/10 rounded-lg">
+          <div className="flex items-center gap-2">
+            {isAdmin ? <ShieldCheck className="w-4 h-4 text-primary" /> : <User className="w-4 h-4 text-muted-foreground" />}
+            <span className="text-xs font-bold uppercase truncate">
+              {profile?.role === 'admin' ? 'Administrador' : 'Usuário Comum'}
+            </span>
+          </div>
+          <p className="text-[10px] text-muted-foreground truncate">{profile?.email}</p>
+        </div>
         <div className="text-[10px] text-muted-foreground text-center uppercase tracking-wider font-bold">
-          v1.2 - Powered by Gemini
+          v1.5 - Secure RBAC
         </div>
       </SidebarFooter>
     </Sidebar>

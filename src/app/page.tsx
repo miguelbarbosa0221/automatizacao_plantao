@@ -3,17 +3,18 @@
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { PlusCircle, ClipboardList, Share2, ArrowRight, Loader2, Copy, CheckCircle2 } from "lucide-react"
+import { PlusCircle, ClipboardList, Share2, ArrowRight, Loader2, Copy, ShieldCheck, User } from "lucide-react"
 import Link from "next/link"
 import { useMemoFirebase, useCollection, useUser, useFirestore } from "@/firebase"
 import { collection, query, orderBy, limit } from "firebase/firestore"
 import { useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
+import { Badge } from "@/components/ui/badge"
 
 export default function Home() {
-  const { user } = useUser();
+  const { user, isAdmin, profile } = useUser();
   const db = useFirestore();
   const { toast } = useToast();
 
@@ -22,7 +23,7 @@ export default function Home() {
     return query(
       collection(db, "users", user.uid, "demands"),
       orderBy("timestamp", "desc"),
-      limit(50) // Aumentado para garantir que pegamos os chamados de hoje
+      limit(50)
     );
   }, [db, user]);
 
@@ -30,26 +31,16 @@ export default function Home() {
 
   const todayMetrics = useMemo(() => {
     if (!demands) return { total: 0, ai: 0, list: [] };
-    
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-
     const filtered = demands.filter(d => new Date(d.timestamp) >= startOfToday);
-    
-    return {
-      total: filtered.length,
-      ai: filtered.filter(d => d.source === 'free-text').length,
-      list: filtered
-    };
+    return { total: filtered.length, ai: filtered.filter(d => d.source === 'free-text').length, list: filtered };
   }, [demands]);
 
   const copyToClipboard = (demand: any) => {
     const text = `Título: ${demand.title}\n\nDescrição Técnica:\n${demand.description}\n\nResolução:\n${demand.resolution}`;
     navigator.clipboard.writeText(text);
-    toast({ 
-      title: "Copiado!", 
-      description: "Dados prontos para o sistema oficial.",
-    });
+    toast({ title: "Copiado!", description: "Dados prontos para o sistema oficial." });
   }
 
   return (
@@ -59,6 +50,12 @@ export default function Home() {
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
           <h1 className="text-lg font-semibold font-headline">Visão Geral do Plantão</h1>
+          <div className="ml-auto flex items-center gap-2">
+            <Badge variant={isAdmin ? "default" : "secondary"} className="gap-1 py-1">
+              {isAdmin ? <ShieldCheck className="w-3 h-3" /> : <User className="w-3 h-3" />}
+              {isAdmin ? "Administrador" : "Usuário"}
+            </Badge>
+          </div>
         </header>
         <main className="flex-1 overflow-auto p-6 space-y-6">
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
@@ -106,17 +103,13 @@ export default function Home() {
             </div>
             
             {isLoading ? (
-              <div className="flex justify-center py-12">
-                <Loader2 className="animate-spin text-primary h-8 w-8" />
-              </div>
+              <div className="flex justify-center py-12"><Loader2 className="animate-spin text-primary h-8 w-8" /></div>
             ) : todayMetrics.list.length === 0 ? (
               <Card className="p-12 text-center border-dashed border-2">
                 <div className="flex flex-col items-center gap-4">
                   <ClipboardList className="w-12 h-12 text-muted-foreground opacity-20" />
                   <p className="text-muted-foreground">Nenhum atendimento registrado hoje.</p>
-                  <Button asChild>
-                    <Link href="/demands/new">Registrar Primeira Demanda</Link>
-                  </Button>
+                  <Button asChild><Link href="/demands/new">Registrar Primeira Demanda</Link></Button>
                 </div>
               </Card>
             ) : (
@@ -128,22 +121,11 @@ export default function Home() {
                         <div className="space-y-1">
                           <CardTitle className="text-lg text-primary">{demand.title}</CardTitle>
                           <div className="flex gap-2">
-                            <CardDescription className="flex items-center gap-1">
-                              <ClipboardList className="w-3 h-3" /> {demand.category || 'Geral'}
-                            </CardDescription>
-                            <CardDescription className="text-xs border-l pl-2">
-                              {new Date(demand.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                            </CardDescription>
+                            <CardDescription className="flex items-center gap-1"><ClipboardList className="w-3 h-3" /> {demand.category || 'Geral'}</CardDescription>
+                            <CardDescription className="text-xs border-l pl-2">{new Date(demand.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</CardDescription>
                           </div>
                         </div>
-                        <Button 
-                          variant="outline" 
-                          size="sm" 
-                          className="gap-2 border-primary/20 text-primary hover:bg-primary/5"
-                          onClick={() => copyToClipboard(demand)}
-                        >
-                          <Copy className="w-3.5 h-3.5" /> Copiar Tudo
-                        </Button>
+                        <Button variant="outline" size="sm" className="gap-2 border-primary/20 text-primary hover:bg-primary/5" onClick={() => copyToClipboard(demand)}><Copy className="w-3.5 h-3.5" /> Copiar Tudo</Button>
                       </div>
                     </CardHeader>
                     <CardContent className="space-y-4">
