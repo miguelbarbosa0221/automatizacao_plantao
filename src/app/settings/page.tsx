@@ -73,7 +73,7 @@ export default function SettingsPage() {
   const [unitSectors, setUnitSectors] = useState<string[]>([])
   const [tempSector, setTempSector] = useState("")
 
-  // Edição
+  // Edição Categoria
   const [editingCategory, setEditingCategory] = useState<any>(null)
   const [editCatName, setEditCatName] = useState("")
   const [editCatSubs, setEditCatSubs] = useState<{name: string, items: string[]}[]>([])
@@ -82,6 +82,7 @@ export default function SettingsPage() {
   const [activeSubForItems, setActiveSubForItems] = useState<number | null>(null)
   const [tempItemName, setTempItemName] = useState("")
 
+  // Edição Unidade
   const [editingUnit, setEditingUnit] = useState<any>(null)
   const [editUnitName, setEditUnitName] = useState("")
   const [editUnitSectors, setEditUnitSectors] = useState<string[]>([])
@@ -126,6 +127,17 @@ export default function SettingsPage() {
     }, { merge: true });
     setNewUnitName(""); setUnitSectors([]);
     toast({ title: "Sucesso", description: "Unidade salva." });
+  }
+
+  const handleUpdateUnit = () => {
+    if (!editingUnit || !editUnitName.trim() || !user || !db) return;
+    const docRef = doc(db, "users", user.uid, "units", editingUnit.id);
+    updateDocumentNonBlocking(docRef, { 
+      name: editUnitName.trim(), 
+      sectors: editUnitSectors 
+    });
+    setEditingUnit(null);
+    toast({ title: "Sucesso", description: "Unidade atualizada." });
   }
 
   const toggleStatus = (type: 'categories' | 'units', id: string, active: boolean) => {
@@ -217,7 +229,12 @@ export default function SettingsPage() {
                   <CardContent className="space-y-4">
                     <Input placeholder="Nome da Unidade" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} />
                     <div className="flex gap-2">
-                      <Input placeholder="Adicionar Setor..." value={tempSector} onChange={(e) => setTempSector(e.target.value)} />
+                      <Input 
+                        placeholder="Adicionar Setor..." 
+                        value={tempSector} 
+                        onChange={(e) => setTempSector(e.target.value)}
+                        onKeyDown={(e) => { if(e.key==='Enter' && tempSector.trim()){setUnitSectors([...unitSectors, tempSector]); setTempSector("");} }}
+                      />
                       <Button onClick={() => { if(tempSector.trim()){setUnitSectors([...unitSectors, tempSector]); setTempSector("");} }}><Plus className="w-4 h-4" /></Button>
                     </div>
                     <div className="flex flex-wrap gap-2">
@@ -236,7 +253,11 @@ export default function SettingsPage() {
                         <div key={u.id} className="p-3 border rounded-md mb-2 flex justify-between items-center">
                           <div><div className="font-bold">{u.name}</div><div className="text-[10px]">{u.sectors?.join(", ")}</div></div>
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => { setEditingUnit(u); setEditUnitName(u.name); setEditUnitSectors(u.sectors || []); }}><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => { 
+                              setEditingUnit(u); 
+                              setEditUnitName(u.name); 
+                              setEditUnitSectors(u.sectors || []); 
+                            }}><Pencil className="w-4 h-4" /></Button>
                             <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setItemToDelete({type: 'units', id: u.id})}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </div>
@@ -366,6 +387,61 @@ export default function SettingsPage() {
               <DialogFooter>
                 <Button variant="outline" onClick={() => setEditingCategory(null)}>Cancelar</Button>
                 <Button onClick={handleUpdateCategory}>Salvar Alterações</Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+
+          {/* Diálogo de Edição de Unidades */}
+          <Dialog open={!!editingUnit} onOpenChange={() => setEditingUnit(null)}>
+            <DialogContent className="max-w-md">
+              <DialogHeader>
+                <DialogTitle>Editar Unidade e Setores</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label>Nome da Unidade</Label>
+                  <Input 
+                    value={editUnitName} 
+                    onChange={(e) => setEditUnitName(e.target.value)} 
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>Gerenciar Setores</Label>
+                  <div className="flex gap-2">
+                    <Input 
+                      placeholder="Adicionar setor..." 
+                      value={editTempSector} 
+                      onChange={(e) => setEditTempSector(e.target.value)}
+                      onKeyDown={(e) => {
+                        if(e.key === 'Enter' && editTempSector.trim()){
+                          setEditUnitSectors([...editUnitSectors, editTempSector]);
+                          setEditTempSector("");
+                        }
+                      }}
+                    />
+                    <Button onClick={() => {
+                      if(editTempSector.trim()){
+                        setEditUnitSectors([...editUnitSectors, editTempSector]);
+                        setEditTempSector("");
+                      }
+                    }}><Plus className="w-4 h-4" /></Button>
+                  </div>
+                  <ScrollArea className="h-[200px] border rounded-md p-2 mt-2">
+                    <div className="flex flex-wrap gap-2">
+                      {editUnitSectors.map((sector, idx) => (
+                        <Badge key={idx} variant="outline" className="gap-1">
+                          {sector}
+                          <X className="w-3 h-3 cursor-pointer text-destructive" onClick={() => setEditUnitSectors(editUnitSectors.filter((_, i) => i !== idx))} />
+                        </Badge>
+                      ))}
+                      {editUnitSectors.length === 0 && <p className="text-xs text-muted-foreground p-4 text-center w-full">Nenhum setor cadastrado.</p>}
+                    </div>
+                  </ScrollArea>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setEditingUnit(null)}>Cancelar</Button>
+                <Button onClick={handleUpdateUnit}>Salvar Alterações</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
