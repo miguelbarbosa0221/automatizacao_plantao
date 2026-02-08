@@ -14,7 +14,7 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar"
 import Link from "next/link"
-import { usePathname, useRouter } from "next/navigation"
+import { usePathname } from "next/navigation"
 import { useUser, useAuth } from "@/firebase"
 import { Badge } from "@/components/ui/badge"
 import { initiateSignOut } from "@/firebase/non-blocking-login"
@@ -22,8 +22,7 @@ import { useToast } from "@/hooks/use-toast"
 
 export function AppSidebar() {
   const pathname = usePathname()
-  const router = useRouter()
-  const { isAdmin, profile } = useUser()
+  const { isAdmin, profile, user } = useUser()
   const auth = useAuth()
   const { toast } = useToast()
 
@@ -54,9 +53,10 @@ export function AppSidebar() {
   }
 
   const handleLogout = () => {
+    // Apenas inicia o logout. O AuthInitializer cuidará do redirecionamento
+    // assim que o estado do Firebase mudar para nulo.
     initiateSignOut(auth)
     toast({ title: "Sessão encerrada", description: "Você saiu do sistema com segurança." })
-    router.push('/login')
   }
 
   return (
@@ -92,7 +92,7 @@ export function AppSidebar() {
               {profile?.role === 'admin' ? 'Administrador' : 'Usuário'}
             </span>
           </div>
-          <p className="text-[10px] text-muted-foreground truncate">{profile?.email || 'Autenticando...'}</p>
+          <p className="text-[10px] text-muted-foreground truncate">{profile?.email || user?.email || 'Saindo...'}</p>
         </div>
         
         <SidebarMenu>
