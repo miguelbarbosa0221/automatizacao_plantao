@@ -74,13 +74,13 @@
       "schema": "#/backend/entities/Demand",
       "description": "Histórico de chamados do usuário."
     },
-    "/users/{userId}/categories/{categoryId}": {
+    "/categories/{categoryId}": {
       "schema": "#/backend/entities/Category",
-      "description": "Categorias personalizadas do usuário."
+      "description": "Categorias globais compartilhadas por toda a organização."
     },
-    "/users/{userId}/units/{unitId}": {
+    "/units/{unitId}": {
       "schema": "#/backend/entities/Unit",
-      "description": "Unidades e setores personalizados do usuário."
+      "description": "Unidades e setores globais compartilhados por toda a organização."
     }
   }
 }

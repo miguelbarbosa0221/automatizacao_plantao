@@ -1,3 +1,4 @@
+
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -10,21 +11,20 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { ScrollArea } from "@/components/ui/scroll-area"
 import { useState, useMemo } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
-import { Loader2, Wand2, Copy, CheckCircle2, MapPin, Tag, ClipboardList, Lightbulb, History } from "lucide-react"
+import { Loader2, Wand2, Copy, CheckCircle2, MapPin, Tag, Lightbulb, History } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
-import { collection, doc, query, where, limit, orderBy } from "firebase/firestore"
+import { collection, doc, query, where, limit } from "firebase/firestore"
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates"
 
 // Helper para normalizar subcategorias legadas (strings) para objetos
 const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
   return (subs || []).map(s => {
     if (typeof s === 'string') return { name: s, items: [] };
-    return { name: s.name || 'Sem nome', items: s.items || [] };
+    return { name: s?.name || 'Sem nome', items: s?.items || [] };
   });
 };
 
@@ -38,15 +38,16 @@ export default function NewDemandPage() {
   const db = useFirestore()
   const { user } = useUser()
 
+  // Queries globais (não dependem do user.uid no caminho)
   const categoriesQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return collection(db, "users", user.uid, "categories");
-  }, [db, user?.uid]);
+    if (!db) return null;
+    return collection(db, "categories");
+  }, [db]);
 
   const unitsQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return collection(db, "users", user.uid, "units");
-  }, [db, user?.uid]);
+    if (!db) return null;
+    return collection(db, "units");
+  }, [db]);
 
   const { data: categoriesData, isLoading: isCatLoading } = useCollection(categoriesQuery);
   const { data: unitsData, isLoading: isUnitLoading } = useCollection(unitsQuery);
@@ -68,7 +69,7 @@ export default function NewDemandPage() {
   const currentSubcategories = useMemo(() => normalizeSubs(currentCategory?.subcategories), [currentCategory]);
   const currentSub = useMemo(() => currentSubcategories.find(s => s.name === selectedSubName), [currentSubcategories, selectedSubName]);
 
-  // Sugestões inteligentes baseadas no histórico
+  // Sugestões inteligentes baseadas no histórico privado do usuário
   const suggestionsQuery = useMemoFirebase(() => {
     if (!db || !user || !selectedCategoryName) return null;
     return query(

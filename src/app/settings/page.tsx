@@ -34,10 +34,11 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
+// Helper para normalizar subcategorias
 const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
   return (subs || []).map(s => {
     if (typeof s === 'string') return { name: s, items: [] };
-    return { name: s.name || 'Sem nome', items: s.items || [] };
+    return { name: s?.name || 'Sem nome', items: s?.items || [] };
   });
 };
 
@@ -46,15 +47,16 @@ export default function SettingsPage() {
   const db = useFirestore()
   const { user, isAdmin, isUserLoading } = useUser()
 
+  // Queries globais para organização
   const categoriesQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return collection(db, "users", user.uid, "categories");
-  }, [db, user?.uid]);
+    if (!db) return null;
+    return collection(db, "categories");
+  }, [db]);
 
   const unitsQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
-    return collection(db, "users", user.uid, "units");
-  }, [db, user?.uid]);
+    if (!db) return null;
+    return collection(db, "units");
+  }, [db]);
 
   const { data: categoriesData, isLoading: isCatLoading } = useCollection(categoriesQuery);
   const { data: unitsData, isLoading: isUnitLoading } = useCollection(unitsQuery);
@@ -88,7 +90,7 @@ export default function SettingsPage() {
           <main className="flex flex-col items-center justify-center h-full space-y-4">
             <ShieldAlert className="w-16 h-16 text-destructive opacity-50" />
             <h1 className="text-2xl font-bold">Acesso Restrito</h1>
-            <p className="text-muted-foreground">Você não possui permissões de Administrador para acessar esta página.</p>
+            <p className="text-muted-foreground">Você não possui permissões de Administrador para gerenciar as tabelas globais.</p>
             <Button asChild><a href="/">Voltar ao Dashboard</a></Button>
           </main>
         </SidebarInset>
@@ -97,42 +99,42 @@ export default function SettingsPage() {
   }
 
   const handleAddCategory = () => {
-    if (!newCatName.trim() || !user || !db) return;
+    if (!newCatName.trim() || !db) return;
     const id = Math.random().toString(36).substr(2, 9);
-    const docRef = doc(db, "users", user.uid, "categories", id);
+    const docRef = doc(db, "categories", id);
     setDocumentNonBlocking(docRef, { id, name: newCatName.trim(), subcategories: catSubs, active: true }, { merge: true });
     setNewCatName(""); setCatSubs([]);
-    toast({ title: "Sucesso", description: "Categoria salva." });
+    toast({ title: "Sucesso", description: "Categoria salva no catálogo global." });
   }
 
   const handleUpdateCategory = () => {
-    if (!editingCategory || !editCatName.trim() || !user || !db) return;
-    const docRef = doc(db, "users", user.uid, "categories", editingCategory.id);
+    if (!editingCategory || !editCatName.trim() || !db) return;
+    const docRef = doc(db, "categories", editingCategory.id);
     updateDocumentNonBlocking(docRef, { name: editCatName.trim(), subcategories: editCatSubs });
     setEditingCategory(null);
-    toast({ title: "Sucesso", description: "Categoria atualizada." });
+    toast({ title: "Sucesso", description: "Categoria global atualizada." });
   }
 
   const handleAddUnit = () => {
-    if (!newUnitName.trim() || !user || !db) return;
+    if (!newUnitName.trim() || !db) return;
     const id = Math.random().toString(36).substr(2, 9);
-    const docRef = doc(db, "users", user.uid, "units", id);
+    const docRef = doc(db, "units", id);
     setDocumentNonBlocking(docRef, { id, name: newUnitName.trim(), sectors: unitSectors, active: true }, { merge: true });
     setNewUnitName(""); setUnitSectors([]);
-    toast({ title: "Sucesso", description: "Unidade salva." });
+    toast({ title: "Sucesso", description: "Unidade salva no catálogo global." });
   }
 
   const handleUpdateUnit = () => {
-    if (!editingUnit || !editUnitName.trim() || !user || !db) return;
-    const docRef = doc(db, "users", user.uid, "units", editingUnit.id);
+    if (!editingUnit || !editUnitName.trim() || !db) return;
+    const docRef = doc(db, "units", editingUnit.id);
     updateDocumentNonBlocking(docRef, { name: editUnitName.trim(), sectors: editUnitSectors });
     setEditingUnit(null);
-    toast({ title: "Sucesso", description: "Unidade atualizada." });
+    toast({ title: "Sucesso", description: "Unidade global atualizada." });
   }
 
   const toggleStatus = (type: 'categories' | 'units', id: string, active: boolean) => {
-    if (!user || !db) return;
-    const docRef = doc(db, "users", user.uid, type, id);
+    if (!db) return;
+    const docRef = doc(db, type, id);
     updateDocumentNonBlocking(docRef, { active });
     setItemToDelete(null);
   }
@@ -143,7 +145,7 @@ export default function SettingsPage() {
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <h1 className="text-lg font-semibold font-headline">Configurações do Plantão</h1>
+          <h1 className="text-lg font-semibold font-headline">Configurações Globais</h1>
           <Badge variant="outline" className="ml-auto text-[10px] font-bold uppercase tracking-widest text-primary">Modo Administrador</Badge>
         </header>
         <main className="flex-1 overflow-auto p-6 max-w-6xl mx-auto w-full">
@@ -157,7 +159,7 @@ export default function SettingsPage() {
             <TabsContent value="categories" className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <Card>
-                  <CardHeader><CardTitle>Nova Categoria Principal</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>Nova Categoria Global</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                     <div className="space-y-2">
                       <Label>Nome</Label>
@@ -207,7 +209,7 @@ export default function SettingsPage() {
             <TabsContent value="units" className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <Card>
-                  <CardHeader><CardTitle>Nova Unidade</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>Nova Unidade Global</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
                     <Input placeholder="Nome da Unidade" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} />
                     <div className="flex gap-2">
@@ -275,7 +277,7 @@ export default function SettingsPage() {
 
           <Dialog open={!!editingCategory} onOpenChange={() => { setEditingCategory(null); setActiveSubForItems(null); }}>
             <DialogContent className="max-w-2xl">
-              <DialogHeader><DialogTitle>Editar Categoria e Itens</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Editar Categoria Global</DialogTitle></DialogHeader>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
                 <div className="space-y-4 border-r pr-4">
                   <div className="space-y-2">
@@ -338,7 +340,7 @@ export default function SettingsPage() {
 
           <Dialog open={!!editingUnit} onOpenChange={() => setEditingUnit(null)}>
             <DialogContent className="max-w-md">
-              <DialogHeader><DialogTitle>Editar Unidade e Setores</DialogTitle></DialogHeader>
+              <DialogHeader><DialogTitle>Editar Unidade Global</DialogTitle></DialogHeader>
               <div className="space-y-4 py-4">
                 <div className="space-y-2">
                   <Label>Nome da Unidade</Label>
@@ -373,7 +375,7 @@ export default function SettingsPage() {
             <AlertDialogContent>
               <AlertDialogHeader>
                 <AlertDialogTitle>Mover para Lixeira?</AlertDialogTitle>
-                <AlertDialogDescription>Este item será desativado e não aparecerá nos formulários de demanda.</AlertDialogDescription>
+                <AlertDialogDescription>Este item será desativado globalmente e não aparecerá nos formulários de demanda.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
                 <AlertDialogCancel>Voltar</AlertDialogCancel>
