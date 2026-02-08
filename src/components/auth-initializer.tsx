@@ -1,7 +1,7 @@
 
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useAuth, useUser, useFirestore } from '@/firebase';
 import { Loader2 } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
@@ -13,8 +13,16 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const { user, isUserLoading, profile } = useUser();
   const pathname = usePathname();
   const router = useRouter();
+  const [isMounted, setIsMounted] = useState(false);
+
+  // Garante que o componente só processe redirecionamentos após a montagem no cliente
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
 
   useEffect(() => {
+    if (!isMounted) return;
+
     // Se não estiver logado e não estiver na página de login, redireciona para login
     if (!isUserLoading && !user && pathname !== '/login') {
       router.push('/login');
@@ -31,8 +39,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       getDoc(profileRef).then((snap) => {
         if (!snap.exists()) {
           // POLÍTICA DE SEGURANÇA: Todo novo acesso via e-mail é 'user' (Usuário Simples) por padrão.
-          // O perfil de 'admin' deve ser atribuído manualmente no console do Firebase Firestore
-          // alterando o campo 'role' para 'admin'.
+          // O privilégio de 'admin' deve ser atribuído manualmente no console do Firestore.
           setDoc(profileRef, {
             uid: user.uid,
             role: 'user',
@@ -43,9 +50,10 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
         }
       });
     }
-  }, [user, isUserLoading, auth, db, profile, pathname, router]);
+  }, [user, isUserLoading, auth, db, profile, pathname, router, isMounted]);
 
-  if (isUserLoading) {
+  // Durante a hidratação e carregamento, exibe a tela de validação
+  if (!isMounted || isUserLoading) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
