@@ -63,7 +63,7 @@
     }
   },
   "auth": {
-    "providers": ["anonymous", "google"]
+    "providers": ["password", "google"]
   },
   "firestore": {
     "/users/{userId}/profile": {

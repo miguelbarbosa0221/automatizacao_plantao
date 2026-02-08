@@ -3,21 +3,30 @@
 
 import { useEffect } from 'react';
 import { useAuth, useUser, useFirestore } from '@/firebase';
-import { initiateAnonymousSignIn } from '@/firebase/non-blocking-login';
 import { Loader2 } from 'lucide-react';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
+import { usePathname, useRouter } from 'next/navigation';
 
 export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const db = useFirestore();
   const { user, isUserLoading, profile } = useUser();
+  const pathname = usePathname();
+  const router = useRouter();
 
   useEffect(() => {
-    if (!isUserLoading && !user) {
-      initiateAnonymousSignIn(auth);
+    // Se não estiver logado e não estiver na página de login, redireciona
+    if (!isUserLoading && !user && pathname !== '/login') {
+      router.push('/login');
     }
 
-    if (user && db && !profile) {
+    // Se estiver logado mas na página de login, redireciona para home
+    if (!isUserLoading && user && pathname === '/login') {
+      router.push('/');
+    }
+
+    // Lógica de criação de perfil para o primeiro login
+    if (user && db && !profile && !isUserLoading) {
       const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
       getDoc(profileRef).then((snap) => {
         if (!snap.exists()) {
@@ -25,14 +34,14 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
           setDoc(profileRef, {
             uid: user.uid,
             role: 'admin',
-            email: user.email || 'anonimo@plantaoai.local',
-            displayName: user.displayName || 'Plantão Local',
+            email: user.email || 'usuario@plantaoai.local',
+            displayName: user.displayName || user.email?.split('@')[0] || 'Plantonista',
             createdAt: new Date().toISOString()
           });
         }
       });
     }
-  }, [user, isUserLoading, auth, db, profile]);
+  }, [user, isUserLoading, auth, db, profile, pathname, router]);
 
   if (isUserLoading) {
     return (

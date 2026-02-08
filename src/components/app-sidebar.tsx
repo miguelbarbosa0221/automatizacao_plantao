@@ -1,7 +1,7 @@
 
 "use client"
 
-import { Activity, ClipboardList, PlusCircle, Settings, ShieldCheck, User } from "lucide-react"
+import { Activity, ClipboardList, PlusCircle, Settings, ShieldCheck, User, LogOut } from "lucide-react"
 import {
   Sidebar,
   SidebarContent,
@@ -14,13 +14,18 @@ import {
   SidebarFooter,
 } from "@/components/ui/sidebar"
 import Link from "next/link"
-import { usePathname } from "next/navigation"
-import { useUser } from "@/firebase"
+import { usePathname, useRouter } from "next/navigation"
+import { useUser, useAuth } from "@/firebase"
 import { Badge } from "@/components/ui/badge"
+import { initiateSignOut } from "@/firebase/non-blocking-login"
+import { useToast } from "@/hooks/use-toast"
 
 export function AppSidebar() {
   const pathname = usePathname()
+  const router = useRouter()
   const { isAdmin, profile } = useUser()
+  const auth = useAuth()
+  const { toast } = useToast()
 
   const items = [
     {
@@ -40,13 +45,18 @@ export function AppSidebar() {
     },
   ]
 
-  // Adiciona configurações apenas para administradores
   if (isAdmin) {
     items.push({
       title: "Configurações",
       url: "/settings",
       icon: Settings,
     })
+  }
+
+  const handleLogout = () => {
+    initiateSignOut(auth)
+    toast({ title: "Sessão encerrada", description: "Você saiu do sistema com segurança." })
+    router.push('/login')
   }
 
   return (
@@ -79,13 +89,23 @@ export function AppSidebar() {
           <div className="flex items-center gap-2">
             {isAdmin ? <ShieldCheck className="w-4 h-4 text-primary" /> : <User className="w-4 h-4 text-muted-foreground" />}
             <span className="text-xs font-bold uppercase truncate">
-              {profile?.role === 'admin' ? 'Administrador' : 'Usuário Comum'}
+              {profile?.role === 'admin' ? 'Administrador' : 'Usuário'}
             </span>
           </div>
-          <p className="text-[10px] text-muted-foreground truncate">{profile?.email}</p>
+          <p className="text-[10px] text-muted-foreground truncate">{profile?.email || 'Autenticando...'}</p>
         </div>
+        
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton onClick={handleLogout} className="text-destructive hover:text-destructive hover:bg-destructive/10">
+              <LogOut className="w-4 h-4" />
+              <span>Sair do Sistema</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
+
         <div className="text-[10px] text-muted-foreground text-center uppercase tracking-wider font-bold">
-          v1.5 - Secure RBAC
+          v2.0 - Email Auth
         </div>
       </SidebarFooter>
     </Sidebar>
