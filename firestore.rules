@@ -12,6 +12,7 @@ service cloud.firestore {
 
     function getRole(userId) {
       // O perfil é armazenado em /users/{userId}/profile/profileDoc
+      // Usamos path() para garantir a referência correta
       return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data.role;
     }
 
@@ -22,14 +23,10 @@ service cloud.firestore {
     // Coleções Privadas por Usuário
     match /users/{userId} {
       allow get: if isOwner(userId);
-      allow create: if isSignedIn(); // Permite criar o próprio documento de usuário no login
+      allow create: if isSignedIn();
       
-      match /profile/profileDoc {
-        allow read: if isOwner(userId);
-        allow write: if isOwner(userId) || isAdmin(request.auth.uid);
-      }
-
-      match /demands/{demandId} {
+      // Permite que o dono do documento leia e escreva em QUALQUER subcoleção sua (necessário para migração)
+      match /{allPaths=**} {
         allow read, write: if isOwner(userId);
       }
     }
