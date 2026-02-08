@@ -15,25 +15,27 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const router = useRouter();
 
   useEffect(() => {
-    // Se não estiver logado e não estiver na página de login, redireciona
+    // Se não estiver logado e não estiver na página de login, redireciona para login
     if (!isUserLoading && !user && pathname !== '/login') {
       router.push('/login');
     }
 
-    // Se estiver logado mas na página de login, redireciona para home
+    // Se estiver logado mas na página de login, redireciona para a dashboard
     if (!isUserLoading && user && pathname === '/login') {
       router.push('/');
     }
 
-    // Lógica de criação de perfil para o primeiro login
+    // Lógica de criação de perfil para usuários autenticados sem registro no banco
     if (user && db && !profile && !isUserLoading) {
       const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
       getDoc(profileRef).then((snap) => {
         if (!snap.exists()) {
-          // O primeiro usuário a logar no sistema em modo protótipo ganha admin
+          // POLÍTICA DE SEGURANÇA: Todo novo acesso via e-mail é 'user' (Usuário Simples) por padrão.
+          // O perfil de 'admin' deve ser atribuído manualmente no console do Firebase Firestore
+          // alterando o campo 'role' para 'admin'.
           setDoc(profileRef, {
             uid: user.uid,
-            role: 'admin',
+            role: 'user',
             email: user.email || 'usuario@plantaoai.local',
             displayName: user.displayName || user.email?.split('@')[0] || 'Plantonista',
             createdAt: new Date().toISOString()
@@ -48,7 +50,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Iniciando ambiente seguro...</p>
+          <p className="text-sm text-muted-foreground">Validando sessão segura...</p>
         </div>
       </div>
     );
