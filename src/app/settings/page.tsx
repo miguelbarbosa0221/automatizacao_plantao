@@ -16,7 +16,6 @@ import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc } from "firebase/firestore"
 import { setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates"
-import { migrateLegacyDataToGlobal } from "@/lib/migration-service"
 import {
   Dialog,
   DialogContent,
@@ -46,8 +45,7 @@ const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
 export default function SettingsPage() {
   const { toast } = useToast()
   const db = useFirestore()
-  const { isAdmin, isUserLoading, user } = useUser()
-  const [isMigrating, setIsMigrating] = useState(false)
+  const { isAdmin, isUserLoading } = useUser()
 
   // Queries globais (Root Collections)
   const categoriesQuery = useMemoFirebase(() => {
@@ -100,26 +98,6 @@ export default function SettingsPage() {
     )
   }
 
-  const handleMigration = async () => {
-    if (!db || !user) return;
-    setIsMigrating(true);
-    try {
-      const result = await migrateLegacyDataToGlobal(db, user.uid);
-      toast({ 
-        title: "Migração Concluída", 
-        description: `${result.categoriesMigrated} categorias e ${result.unitsMigrated} unidades movidas para o catálogo global.` 
-      });
-    } catch (error: any) {
-      toast({ 
-        variant: "destructive",
-        title: "Erro na Migração", 
-        description: error.message 
-      });
-    } finally {
-      setIsMigrating(false);
-    }
-  }
-
   const handleAddCategory = () => {
     if (!newCatName.trim() || !db) return;
     const id = Math.random().toString(36).substr(2, 9);
@@ -169,16 +147,6 @@ export default function SettingsPage() {
           <SidebarTrigger />
           <h1 className="text-lg font-semibold font-headline">Configurações Globais</h1>
           <div className="ml-auto flex items-center gap-2">
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="gap-2 text-xs border-primary/30 text-primary hover:bg-primary/10"
-              onClick={handleMigration}
-              disabled={isMigrating}
-            >
-              {isMigrating ? <Loader2 className="w-3 h-3 animate-spin" /> : <DatabaseZap className="w-3 h-3" />}
-              Migrar Dados Legados
-            </Button>
             <Badge variant="outline" className="text-[10px] font-bold uppercase tracking-widest text-primary gap-1">
               <Globe className="w-3 h-3" /> Infraestrutura Global
             </Badge>
