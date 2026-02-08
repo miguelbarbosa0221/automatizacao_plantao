@@ -1,4 +1,3 @@
-
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -11,13 +10,14 @@ import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import { useState, useMemo } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
-import { Loader2, Wand2, Copy, CheckCircle2, MapPin, Tag, ClipboardList } from "lucide-react"
+import { Loader2, Wand2, Copy, CheckCircle2, MapPin, Tag, ClipboardList, Lightbulb, History } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
-import { collection, doc } from "firebase/firestore"
+import { collection, doc, query, where, limit, orderBy } from "firebase/firestore"
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates"
 
 // Helper para normalizar subcategorias legadas (strings) para objetos
@@ -68,6 +68,24 @@ export default function NewDemandPage() {
   const currentSubcategories = useMemo(() => normalizeSubs(currentCategory?.subcategories), [currentCategory]);
   const currentSub = useMemo(() => currentSubcategories.find(s => s.name === selectedSubName), [currentSubcategories, selectedSubName]);
 
+  // Sugestões inteligentes baseadas no histórico
+  const suggestionsQuery = useMemoFirebase(() => {
+    if (!db || !user || !selectedCategoryName) return null;
+    return query(
+      collection(db, "users", user.uid, "demands"),
+      where("category", "==", selectedCategoryName),
+      limit(10)
+    );
+  }, [db, user, selectedCategoryName]);
+
+  const { data: historicalDemands } = useCollection(suggestionsQuery);
+
+  const uniqueSuggestions = useMemo(() => {
+    if (!historicalDemands) return [];
+    const resolutions = historicalDemands.map(d => d.resolution);
+    return Array.from(new Set(resolutions)).slice(0, 3);
+  }, [historicalDemands]);
+
   const handleProcessFreeText = async () => {
     if (!freeText.trim()) {
       toast({ title: "Erro", description: "Por favor, insira o texto da demanda." });
@@ -86,7 +104,7 @@ export default function NewDemandPage() {
   }
 
   const handleProcessStructured = async () => {
-    if (!selectedCategoryName || !subject || !details || !selectedUnitName || !selectedSector) {
+    if (!selectedCategoryName || !details || !selectedUnitName || !selectedSector) {
       toast({ title: "Erro", description: "Preencha todos os campos obrigatórios." });
       return;
     }
@@ -97,7 +115,7 @@ export default function NewDemandPage() {
         CATEGORIA: ${selectedCategoryName}
         SUBCATEGORIA: ${selectedSubName || 'Geral'}
         ITEM: ${selectedItemName || 'Não especificado'}
-        ASSUNTO: ${subject}
+        INFORMAÇÃO LIVRE: ${subject || 'Relato estruturado'}
         DETALHES DO ATENDIMENTO: ${details}
       `.trim();
 
@@ -217,15 +235,39 @@ export default function NewDemandPage() {
 
                     <div className="space-y-2">
                       <Label className="flex items-center gap-2">
-                        Assunto Breve
-                        <Badge variant="outline" className="text-[10px] font-normal uppercase">Base para o título</Badge>
+                        Informação Livre
+                        <Badge variant="outline" className="text-[10px] font-normal uppercase">Contexto do Problema</Badge>
                       </Label>
-                      <Input placeholder="Ex: Lentidão no PEP / Troca de Teclado" value={subject} onChange={(e) => setSubject(e.target.value)} />
+                      <Input placeholder="Relato breve do que o usuário disse..." value={subject} onChange={(e) => setSubject(e.target.value)} />
                     </div>
                     
-                    <div className="space-y-2">
-                      <Label>O que foi realizado?</Label>
-                      <Textarea placeholder="Descreva o problema e a solução..." className="min-h-[120px]" value={details} onChange={(e) => setDetails(e.target.value)} />
+                    <div className="space-y-4">
+                      <div className="flex items-center justify-between">
+                        <Label>O que foi realizado?</Label>
+                        {uniqueSuggestions.length > 0 && (
+                          <div className="flex items-center gap-1 text-[10px] text-primary font-bold uppercase animate-pulse">
+                            <Lightbulb className="w-3 h-3" /> Sugestões baseadas no histórico
+                          </div>
+                        )}
+                      </div>
+                      
+                      {uniqueSuggestions.length > 0 && (
+                        <div className="flex flex-wrap gap-2">
+                          {uniqueSuggestions.map((sug, i) => (
+                            <Button 
+                              key={i} 
+                              variant="outline" 
+                              size="sm" 
+                              className="text-[11px] h-7 bg-white/50 border-primary/20 hover:bg-primary/5 hover:border-primary"
+                              onClick={() => setDetails(sug)}
+                            >
+                              <History className="w-3 h-3 mr-1" /> {sug.slice(0, 40)}...
+                            </Button>
+                          ))}
+                        </div>
+                      )}
+
+                      <Textarea placeholder="Descreva tecnicamente a solução aplicada..." className="min-h-[120px]" value={details} onChange={(e) => setDetails(e.target.value)} />
                     </div>
 
                     <Button className="w-full gap-2 font-medium h-12" onClick={handleProcessStructured} disabled={loading}>
@@ -268,9 +310,9 @@ export default function NewDemandPage() {
                     <CardTitle className="text-xl">Dados prontos para exportação ao Help Desk.</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Título do Chamado</Label><div className="p-3 bg-white rounded-md border text-sm font-medium">{result.title}</div></div>
-                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Descrição Técnica</Label><div className="p-3 bg-white rounded-md border text-sm">{result.description}</div></div>
-                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Resolução</Label><div className="p-3 bg-white rounded-md border text-sm italic">{result.resolution}</div></div>
+                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Título do Chamado (Técnico)</Label><div className="p-3 bg-white rounded-md border text-sm font-medium">{result.title}</div></div>
+                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Relato do Usuário (Persona)</Label><div className="p-3 bg-white rounded-md border text-sm">{result.description}</div></div>
+                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Resolução (Técnica)</Label><div className="p-3 bg-white rounded-md border text-sm italic">{result.resolution}</div></div>
                     <div className="flex gap-4 pt-4">
                       <Button className="flex-1 gap-2 h-11" variant="default" onClick={handleSave}><CheckCircle2 className="w-4 h-4" /> Finalizar e Salvar</Button>
                       <Button className="flex-1 gap-2 h-11 bg-secondary text-secondary-foreground" onClick={() => { navigator.clipboard.writeText(`Título: ${result.title}\n\nDescrição: ${result.description}\n\nResolução: ${result.resolution}`); toast({title: "Copiado"}); }}><Copy className="w-4 h-4" /> Copiar para Exportação</Button>

@@ -1,4 +1,3 @@
-
 'use server';
 
 /**
@@ -25,10 +24,10 @@ const ProcessFreeTextDemandWithGeminiOutputSchema = z.object({
   title: z.string().describe('Um título conciso resumindo a demanda.'),
   description: z
     .string()
-    .describe('Um resumo técnico breve do problema.'),
+    .describe('Um relato do problema na persona de um usuário final.'),
   resolution: z
     .string()
-    .describe('Um resumo curto dos passos de resolução.'),
+    .describe('Um resumo técnico curto dos passos de resolução.'),
 });
 
 export type ProcessFreeTextDemandWithGeminiOutput = z.infer<
@@ -50,12 +49,12 @@ const processFreeTextDemandPrompt = ai.definePrompt({
 
   REGRAS DE CONTEÚDO:
   1. Idioma: Português do Brasil (pt-BR).
-  2. Título: Máximo de 8 palavras. Se houver um campo "ASSUNTO" ou "LOCALIZAÇÃO", use-os obrigatoriamente para compor o título (ex: "Lentidão Sistema - Unidade Central").
-  3. Descrição Técnica: Resuma o problema em uma ou duas frases curtas, extremamente diretas e profissionais. Se houver "ITEM" especificado, use-o para contextualizar.
-  4. Resolução: Resuma a ação tomada de forma direta e concisa.
+  2. Título: Gere um título estritamente TÉCNICO e PROFISSIONAL baseado na classificação (Categoria/Subcategoria/Item). Máximo de 8 palavras. (Ex: "Manutenção Preventiva - Estação de Trabalho").
+  3. Descrição: Adote a persona de um 'USUÁRIO FINAL' relatando o problema de forma simples e leiga, como se estivesse abrindo o chamado. (Ex: "Minha tela ficou preta e não consigo acessar os sistemas").
+  4. Resolução: Resuma a ação técnica tomada de forma direta e concisa.
 
-  IMPORTANTE: O texto abaixo pode conter rótulos como "ASSUNTO:", "LOCALIZAÇÃO:", "CATEGORIA:", "SUBCATEGORIA:", "ITEM:", "DETALHES:". 
-  Use TODAS essas informações para construir a resposta mais precisa possível. O campo "ASSUNTO" é a base para o título.
+  IMPORTANTE: O texto abaixo pode conter rótulos como "LOCALIZAÇÃO:", "CATEGORIA:", "SUBCATEGORIA:", "ITEM:", "INFORMAÇÃO LIVRE:", "DETALHES:". 
+  Use TODAS essas informações para construir a resposta mais precisa possível. O campo "INFORMAÇÃO LIVRE" deve ser usado para entender o contexto do relato do usuário.
 
   Texto para processar: 
   {{{freeText}}}
