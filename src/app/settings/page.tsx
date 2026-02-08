@@ -15,7 +15,7 @@ import { useState, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc } from "firebase/firestore"
-import { setDocumentNonBlocking, updateDocumentNonBlocking, deleteDocumentNonBlocking } from "@/firebase/non-blocking-updates"
+import { setDocumentNonBlocking, updateDocumentNonBlocking } from "@/firebase/non-blocking-updates"
 import {
   Dialog,
   DialogContent,
@@ -33,6 +33,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+
+// Helper para normalizar subcategorias legadas (strings) para objetos
+const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
+  return (subs || []).map(s => {
+    if (typeof s === 'string') return { name: s, items: [] };
+    return { name: s.name || 'Sem nome', items: s.items || [] };
+  });
+};
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -71,7 +79,6 @@ export default function SettingsPage() {
   const [editCatSubs, setEditCatSubs] = useState<{name: string, items: string[]}[]>([])
   const [editTempSub, setEditTempSub] = useState("")
   
-  // Gerenciamento de Itens dentro da Subcategoria (Edição)
   const [activeSubForItems, setActiveSubForItems] = useState<number | null>(null)
   const [tempItemName, setTempItemName] = useState("")
 
@@ -162,7 +169,7 @@ export default function SettingsPage() {
                           onChange={(e) => setTempSubName(e.target.value)}
                           onKeyDown={(e) => { if(e.key==='Enter') { setCatSubs([...catSubs, {name: tempSubName, items: []}]); setTempSubName(""); } }}
                         />
-                        <Button variant="outline" onClick={() => { setCatSubs([...catSubs, {name: tempSubName, items: []}]); setTempSubName(""); }}><Plus className="w-4 h-4" /></Button>
+                        <Button variant="outline" onClick={() => { if(tempSubName.trim()) { setCatSubs([...catSubs, {name: tempSubName, items: []}]); setTempSubName(""); } }}><Plus className="w-4 h-4" /></Button>
                       </div>
                       <div className="flex flex-wrap gap-2 pt-2">
                         {catSubs.map((s, i) => (
@@ -184,14 +191,14 @@ export default function SettingsPage() {
                           <div>
                             <div className="font-bold">{cat.name}</div>
                             <div className="text-[10px] text-muted-foreground">
-                              {cat.subcategories?.map(s => `${s.name} (${s.items?.length || 0} itens)`).join(" • ")}
+                              {normalizeSubs(cat.subcategories).map(s => `${s.name} (${s.items?.length || 0} itens)`).join(" • ")}
                             </div>
                           </div>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => { 
                               setEditingCategory(cat); 
                               setEditCatName(cat.name); 
-                              setEditCatSubs(cat.subcategories || []); 
+                              setEditCatSubs(normalizeSubs(cat.subcategories)); 
                             }}><Pencil className="w-4 h-4" /></Button>
                             <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setItemToDelete({type: 'categories', id: cat.id})}><Trash2 className="w-4 h-4" /></Button>
                           </div>
@@ -211,7 +218,7 @@ export default function SettingsPage() {
                     <Input placeholder="Nome da Unidade" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} />
                     <div className="flex gap-2">
                       <Input placeholder="Adicionar Setor..." value={tempSector} onChange={(e) => setTempSector(e.target.value)} />
-                      <Button onClick={() => { setUnitSectors([...unitSectors, tempSector]); setTempSector(""); }}><Plus className="w-4 h-4" /></Button>
+                      <Button onClick={() => { if(tempSector.trim()){setUnitSectors([...unitSectors, tempSector]); setTempSector("");} }}><Plus className="w-4 h-4" /></Button>
                     </div>
                     <div className="flex flex-wrap gap-2">
                       {unitSectors.map((s, i) => (
@@ -272,7 +279,6 @@ export default function SettingsPage() {
             </TabsContent>
           </Tabs>
 
-          {/* Diálogo Edição Categoria - AGORA COM ITENS */}
           <Dialog open={!!editingCategory} onOpenChange={() => { setEditingCategory(null); setActiveSubForItems(null); }}>
             <DialogContent className="max-w-2xl">
               <DialogHeader><DialogTitle>Editar Categoria e Itens</DialogTitle></DialogHeader>
@@ -286,7 +292,7 @@ export default function SettingsPage() {
                     <Label>Subcategorias</Label>
                     <div className="flex gap-2">
                       <Input value={editTempSub} onChange={(e) => setEditTempSub(e.target.value)} placeholder="Nova sub..." />
-                      <Button onClick={() => { setEditCatSubs([...editCatSubs, {name: editTempSub, items: []}]); setEditTempSub(""); }}><Plus className="w-4 h-4" /></Button>
+                      <Button onClick={() => { if(editTempSub.trim()){setEditCatSubs([...editCatSubs, {name: editTempSub, items: []}]); setEditTempSub("");} }}><Plus className="w-4 h-4" /></Button>
                     </div>
                     <ScrollArea className="h-[250px] pr-2">
                       {editCatSubs.map((sub, i) => (
@@ -319,7 +325,7 @@ export default function SettingsPage() {
                           value={tempItemName} 
                           onChange={(e) => setTempItemName(e.target.value)}
                           onKeyDown={(e) => {
-                            if(e.key === 'Enter') {
+                            if(e.key === 'Enter' && tempItemName.trim()) {
                               const updated = [...editCatSubs];
                               updated[activeSubForItems].items = [...(updated[activeSubForItems].items || []), tempItemName];
                               setEditCatSubs(updated);
@@ -328,10 +334,12 @@ export default function SettingsPage() {
                           }}
                         />
                         <Button onClick={() => {
-                          const updated = [...editCatSubs];
-                          updated[activeSubForItems].items = [...(updated[activeSubForItems].items || []), tempItemName];
-                          setEditCatSubs(updated);
-                          setTempItemName("");
+                          if (tempItemName.trim()) {
+                            const updated = [...editCatSubs];
+                            updated[activeSubForItems].items = [...(updated[activeSubForItems].items || []), tempItemName];
+                            setEditCatSubs(updated);
+                            setTempItemName("");
+                          }
                         }}><Plus className="w-4 h-4" /></Button>
                       </div>
                       <ScrollArea className="h-[250px] pr-2">

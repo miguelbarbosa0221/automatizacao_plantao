@@ -12,12 +12,20 @@ import { Button } from "@/components/ui/button"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { useState, useMemo } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
-import { Loader2, Send, Wand2, Copy, CheckCircle2, MapPin, Tag } from "lucide-react"
+import { Loader2, Wand2, Copy, CheckCircle2, MapPin, Tag, ClipboardList } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useRouter } from "next/navigation"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc } from "firebase/firestore"
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates"
+
+// Helper para normalizar subcategorias legadas (strings) para objetos
+const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
+  return (subs || []).map(s => {
+    if (typeof s === 'string') return { name: s, items: [] };
+    return { name: s.name || 'Sem nome', items: s.items || [] };
+  });
+};
 
 export default function NewDemandPage() {
   const [activeTab, setActiveTab] = useState("structured")
@@ -55,7 +63,9 @@ export default function NewDemandPage() {
 
   const currentUnit = useMemo(() => activeUnits.find(u => u.name === selectedUnitName), [activeUnits, selectedUnitName]);
   const currentCategory = useMemo(() => activeCategories.find(c => c.name === selectedCategoryName), [activeCategories, selectedCategoryName]);
-  const currentSub = useMemo(() => currentCategory?.subcategories?.find((s: any) => s.name === selectedSubName), [currentCategory, selectedSubName]);
+  
+  const currentSubcategories = useMemo(() => normalizeSubs(currentCategory?.subcategories), [currentCategory]);
+  const currentSub = useMemo(() => currentSubcategories.find(s => s.name === selectedSubName), [currentSubcategories, selectedSubName]);
 
   const handleProcessFreeText = async () => {
     if (!freeText.trim()) {
@@ -188,7 +198,7 @@ export default function NewDemandPage() {
                           <Select onValueChange={(val) => { setSelectedSubName(val); setSelectedItemName(""); }} disabled={!selectedCategoryName} value={selectedSubName}>
                             <SelectTrigger><SelectValue placeholder="Secundária" /></SelectTrigger>
                             <SelectContent>
-                              {currentCategory?.subcategories?.map((sub: any) => <SelectItem key={sub.name} value={sub.name}>{sub.name}</SelectItem>)}
+                              {currentSubcategories.map(sub => <SelectItem key={sub.name} value={sub.name}>{sub.name}</SelectItem>)}
                             </SelectContent>
                           </Select>
                         </div>
@@ -205,7 +215,10 @@ export default function NewDemandPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Assunto Breve (Base para o título)</Label>
+                      <Label className="flex items-center gap-2">
+                        Assunto Breve
+                        <Badge variant="outline" className="text-[10px] font-normal uppercase">Base para o título</Badge>
+                      </Label>
                       <Input placeholder="Ex: Lentidão no PEP / Troca de Teclado" value={subject} onChange={(e) => setSubject(e.target.value)} />
                     </div>
                     
@@ -246,22 +259,20 @@ export default function NewDemandPage() {
               <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
                 <Card className="border-none shadow-xl bg-accent/5 overflow-hidden">
                   <div className="bg-accent h-2 w-full" />
-                  <CardHeader className="flex flex-row items-center justify-between">
-                    <div>
-                      <CardTitle className="text-xl">Resultado Padronizado</CardTitle>
-                      <CardDescription>Dados otimizados pela IA para o Help Desk.</CardDescription>
+                  <CardHeader>
+                    <div className="flex items-center gap-2 text-primary mb-2">
+                      <CheckCircle2 className="w-5 h-5" />
+                      <span className="text-xs font-bold uppercase tracking-wider">Resultado Processado</span>
                     </div>
-                    <Button variant="outline" size="icon" onClick={() => { navigator.clipboard.writeText(`Título: ${result.title}\n\nDescrição: ${result.description}\n\nResolução: ${result.resolution}`); toast({title: "Copiado"}); }}>
-                      <Copy className="w-4 h-4" />
-                    </Button>
+                    <CardTitle className="text-xl">Dados prontos para exportação ao Help Desk.</CardTitle>
                   </CardHeader>
                   <CardContent className="space-y-6">
-                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Título</Label><div className="p-3 bg-white rounded-md border text-sm font-medium">{result.title}</div></div>
+                    <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Título do Chamado</Label><div className="p-3 bg-white rounded-md border text-sm font-medium">{result.title}</div></div>
                     <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Descrição Técnica</Label><div className="p-3 bg-white rounded-md border text-sm">{result.description}</div></div>
                     <div className="space-y-1"><Label className="text-xs uppercase text-muted-foreground font-bold">Resolução</Label><div className="p-3 bg-white rounded-md border text-sm italic">{result.resolution}</div></div>
                     <div className="flex gap-4 pt-4">
                       <Button className="flex-1 gap-2 h-11" variant="default" onClick={handleSave}><CheckCircle2 className="w-4 h-4" /> Finalizar e Salvar</Button>
-                      <Button className="flex-1 gap-2 h-11 bg-secondary text-secondary-foreground" onClick={() => { navigator.clipboard.writeText(`Título: ${result.title}\n\nDescrição: ${result.description}\n\nResolução: ${result.resolution}`); toast({title: "Copiado"}); }}><Send className="w-4 h-4" /> Copiar para Exportação</Button>
+                      <Button className="flex-1 gap-2 h-11 bg-secondary text-secondary-foreground" onClick={() => { navigator.clipboard.writeText(`Título: ${result.title}\n\nDescrição: ${result.description}\n\nResolução: ${result.resolution}`); toast({title: "Copiado"}); }}><Copy className="w-4 h-4" /> Copiar para Exportação</Button>
                     </div>
                   </CardContent>
                 </Card>
