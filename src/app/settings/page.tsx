@@ -1,3 +1,4 @@
+
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -9,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Building2, Tags, RotateCcw, X, Pencil, Loader2 } from "lucide-react"
+import { Plus, Trash2, Building2, Tags, RotateCcw, X, Pencil, Loader2, ChevronRight, ListPlus } from "lucide-react"
 import { useState, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
@@ -38,7 +39,6 @@ export default function SettingsPage() {
   const db = useFirestore()
   const { user } = useUser()
 
-  // Firestore Collections com memorização rigorosa
   const categoriesQuery = useMemoFirebase(() => {
     if (!db || !user) return null;
     return collection(db, "users", user.uid, "categories");
@@ -55,30 +55,33 @@ export default function SettingsPage() {
   const categories = useMemo(() => categoriesData || [], [categoriesData]);
   const units = useMemo(() => unitsData || [], [unitsData]);
 
-  // Estados locais para formulários de criação
+  // Estados para nova categoria
   const [newCatName, setNewCatName] = useState("")
-  const [catSubsList, setCatSubsList] = useState<string[]>([])
-  const [currentSub, setCurrentSub] = useState("")
+  const [catSubs, setCatSubs] = useState<{name: string, items: string[]}[]>([])
+  const [tempSubName, setTempSubName] = useState("")
 
+  // Estados para nova unidade
   const [newUnitName, setNewUnitName] = useState("")
-  const [unitSectorsList, setUnitSectorsList] = useState<string[]>([])
-  const [currentSector, setCurrentSector] = useState("")
+  const [unitSectors, setUnitSectors] = useState<string[]>([])
+  const [tempSector, setTempSector] = useState("")
 
-  // Estados locais para edição
+  // Edição
   const [editingCategory, setEditingCategory] = useState<any>(null)
   const [editCatName, setEditCatName] = useState("")
-  const [editCatSubs, setEditCatSubs] = useState<string[]>([])
-  const [editCurrentSub, setEditCurrentSub] = useState("")
+  const [editCatSubs, setEditCatSubs] = useState<{name: string, items: string[]}[]>([])
+  const [editTempSub, setEditTempSub] = useState("")
+  
+  // Gerenciamento de Itens dentro da Subcategoria (Edição)
+  const [activeSubForItems, setActiveSubForItems] = useState<number | null>(null)
+  const [tempItemName, setTempItemName] = useState("")
 
   const [editingUnit, setEditingUnit] = useState<any>(null)
   const [editUnitName, setEditUnitName] = useState("")
   const [editUnitSectors, setEditUnitSectors] = useState<string[]>([])
-  const [editCurrentSector, setEditCurrentSector] = useState("")
+  const [editTempSector, setEditTempSector] = useState("")
 
-  // Estados para exclusão/desativação
   const [itemToDelete, setItemToDelete] = useState<{type: 'categories' | 'units', id: string} | null>(null)
 
-  // CRUD Categorias
   const handleAddCategory = () => {
     if (!newCatName.trim() || !user || !db) return;
     const id = Math.random().toString(36).substr(2, 9);
@@ -86,11 +89,10 @@ export default function SettingsPage() {
     setDocumentNonBlocking(docRef, { 
       id, 
       name: newCatName.trim(), 
-      subcategories: catSubsList, 
+      subcategories: catSubs, 
       active: true 
     }, { merge: true });
-    setNewCatName(""); 
-    setCatSubsList([]);
+    setNewCatName(""); setCatSubs([]);
     toast({ title: "Sucesso", description: "Categoria salva." });
   }
 
@@ -105,7 +107,6 @@ export default function SettingsPage() {
     toast({ title: "Sucesso", description: "Categoria atualizada." });
   }
 
-  // CRUD Unidades
   const handleAddUnit = () => {
     if (!newUnitName.trim() || !user || !db) return;
     const id = Math.random().toString(36).substr(2, 9);
@@ -113,23 +114,11 @@ export default function SettingsPage() {
     setDocumentNonBlocking(docRef, { 
       id, 
       name: newUnitName.trim(), 
-      sectors: unitSectorsList, 
+      sectors: unitSectors, 
       active: true 
     }, { merge: true });
-    setNewUnitName(""); 
-    setUnitSectorsList([]);
+    setNewUnitName(""); setUnitSectors([]);
     toast({ title: "Sucesso", description: "Unidade salva." });
-  }
-
-  const handleUpdateUnit = () => {
-    if (!editingUnit || !editUnitName.trim() || !user || !db) return;
-    const docRef = doc(db, "users", user.uid, "units", editingUnit.id);
-    updateDocumentNonBlocking(docRef, { 
-      name: editUnitName.trim(), 
-      sectors: editUnitSectors 
-    });
-    setEditingUnit(null);
-    toast({ title: "Sucesso", description: "Unidade atualizada." });
   }
 
   const toggleStatus = (type: 'categories' | 'units', id: string, active: boolean) => {
@@ -139,19 +128,13 @@ export default function SettingsPage() {
     setItemToDelete(null);
   }
 
-  const deletePermanent = (type: 'categories' | 'units', id: string) => {
-    if (!user || !db) return;
-    const docRef = doc(db, "users", user.uid, type, id);
-    deleteDocumentNonBlocking(docRef);
-  }
-
   return (
     <div className="flex h-screen bg-background">
       <AppSidebar />
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <h1 className="text-lg font-semibold font-headline">Configurações Sincronizadas</h1>
+          <h1 className="text-lg font-semibold font-headline">Configurações do Plantão</h1>
         </header>
         <main className="flex-1 overflow-auto p-6 max-w-6xl mx-auto w-full">
           <Tabs defaultValue="categories" className="space-y-6">
@@ -164,46 +147,45 @@ export default function SettingsPage() {
             <TabsContent value="categories" className="space-y-6">
               <div className="grid gap-6 md:grid-cols-2">
                 <Card>
-                  <CardHeader><CardTitle>Nova Categoria</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>Nova Categoria Principal</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
-                    <Input placeholder="Ex: Hardware" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
-                    <div className="flex gap-2">
-                      <Input 
-                        placeholder="Adicionar Subcategoria..." 
-                        value={currentSub} 
-                        onChange={(e) => setCurrentSub(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && currentSub.trim()) {
-                            setCatSubsList([...catSubsList, currentSub.trim()]);
-                            setCurrentSub("");
-                          }
-                        }}
-                      />
-                      <Button onClick={() => { if(currentSub.trim()) { setCatSubsList([...catSubsList, currentSub.trim()]); setCurrentSub(""); } }}><Plus className="w-4 h-4" /></Button>
+                    <div className="space-y-2">
+                      <Label>Nome</Label>
+                      <Input placeholder="Ex: Sistemas Clínicos" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
                     </div>
-                    <div className="flex flex-wrap gap-2">
-                      {catSubsList.map((s, idx) => (
-                        <Badge key={`${s}-${idx}`} variant="secondary">
-                          {s} <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => setCatSubsList(catSubsList.filter((_, i) => i !== idx))} />
-                        </Badge>
-                      ))}
+                    <div className="space-y-2">
+                      <Label>Subcategorias</Label>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="Adicionar sub..." 
+                          value={tempSubName} 
+                          onChange={(e) => setTempSubName(e.target.value)}
+                          onKeyDown={(e) => { if(e.key==='Enter') { setCatSubs([...catSubs, {name: tempSubName, items: []}]); setTempSubName(""); } }}
+                        />
+                        <Button variant="outline" onClick={() => { setCatSubs([...catSubs, {name: tempSubName, items: []}]); setTempSubName(""); }}><Plus className="w-4 h-4" /></Button>
+                      </div>
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {catSubs.map((s, i) => (
+                          <Badge key={i} variant="secondary" className="gap-1">
+                            {s.name} <X className="w-3 h-3 cursor-pointer" onClick={() => setCatSubs(catSubs.filter((_, idx) => idx !== i))} />
+                          </Badge>
+                        ))}
+                      </div>
                     </div>
-                    <Button className="w-full" onClick={handleAddCategory} disabled={!newCatName.trim()}>Salvar no Firestore</Button>
+                    <Button className="w-full" onClick={handleAddCategory} disabled={!newCatName.trim()}>Salvar Categoria</Button>
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader><CardTitle>Categorias Ativas</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>Catálogo Ativo</CardTitle></CardHeader>
                   <CardContent>
                     <ScrollArea className="h-[400px]">
-                      {isCatLoading ? (
-                        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
-                      ) : categories.filter(c => c.active).length === 0 ? (
-                        <div className="text-center p-8 text-muted-foreground text-sm">Nenhuma categoria ativa.</div>
-                      ) : categories.filter(c => c.active).map(cat => (
-                        <div key={cat.id} className="p-3 border rounded-md mb-2 flex justify-between items-center bg-card">
+                      {isCatLoading ? <Loader2 className="animate-spin mx-auto" /> : categories.filter(c => c.active).map(cat => (
+                        <div key={cat.id} className="p-3 border rounded-md mb-2 flex justify-between items-center hover:bg-accent/5">
                           <div>
                             <div className="font-bold">{cat.name}</div>
-                            <div className="text-[10px] text-muted-foreground">{cat.subcategories?.join(", ") || "Geral"}</div>
+                            <div className="text-[10px] text-muted-foreground">
+                              {cat.subcategories?.map(s => `${s.name} (${s.items?.length || 0} itens)`).join(" • ")}
+                            </div>
                           </div>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => { 
@@ -226,52 +208,29 @@ export default function SettingsPage() {
                 <Card>
                   <CardHeader><CardTitle>Nova Unidade</CardTitle></CardHeader>
                   <CardContent className="space-y-4">
-                    <Input placeholder="Ex: Hospital Central" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} />
+                    <Input placeholder="Nome da Unidade" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} />
                     <div className="flex gap-2">
-                      <Input 
-                        placeholder="Adicionar Setor..." 
-                        value={currentSector} 
-                        onChange={(e) => setCurrentSector(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' && currentSector.trim()) {
-                            setUnitSectorsList([...unitSectorsList, currentSector.trim()]);
-                            setCurrentSector("");
-                          }
-                        }}
-                      />
-                      <Button onClick={() => { if(currentSector.trim()) { setUnitSectorsList([...unitSectorsList, currentSector.trim()]); setCurrentSector(""); } }}><Plus className="w-4 h-4" /></Button>
+                      <Input placeholder="Adicionar Setor..." value={tempSector} onChange={(e) => setTempSector(e.target.value)} />
+                      <Button onClick={() => { setUnitSectors([...unitSectors, tempSector]); setTempSector(""); }}><Plus className="w-4 h-4" /></Button>
                     </div>
                     <div className="flex flex-wrap gap-2">
-                      {unitSectorsList.map((s, idx) => (
-                        <Badge key={`${s}-${idx}`} variant="outline">
-                          {s} <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => setUnitSectorsList(unitSectorsList.filter((_, i) => i !== idx))} />
-                        </Badge>
+                      {unitSectors.map((s, i) => (
+                        <Badge key={i} variant="outline" className="gap-1">{s} <X className="w-3 h-3 cursor-pointer" onClick={() => setUnitSectors(unitSectors.filter((_, idx) => idx !== i))} /></Badge>
                       ))}
                     </div>
-                    <Button className="w-full" onClick={handleAddUnit} disabled={!newUnitName.trim()}>Salvar no Firestore</Button>
+                    <Button className="w-full" onClick={handleAddUnit} disabled={!newUnitName.trim()}>Salvar Unidade</Button>
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader><CardTitle>Unidades Ativas</CardTitle></CardHeader>
                   <CardContent>
                     <ScrollArea className="h-[400px]">
-                      {isUnitLoading ? (
-                        <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
-                      ) : units.filter(u => u.active).length === 0 ? (
-                        <div className="text-center p-8 text-muted-foreground text-sm">Nenhuma unidade ativa.</div>
-                      ) : units.filter(u => u.active).map(unit => (
-                        <div key={unit.id} className="p-3 border rounded-md mb-2 flex justify-between items-center bg-card">
-                          <div>
-                            <div className="font-bold">{unit.name}</div>
-                            <div className="text-[10px] text-muted-foreground">{unit.sectors?.join(", ") || "Sem setores"}</div>
-                          </div>
+                      {isUnitLoading ? <Loader2 className="animate-spin mx-auto" /> : units.filter(u => u.active).map(u => (
+                        <div key={u.id} className="p-3 border rounded-md mb-2 flex justify-between items-center">
+                          <div><div className="font-bold">{u.name}</div><div className="text-[10px]">{u.sectors?.join(", ")}</div></div>
                           <div className="flex gap-1">
-                            <Button variant="ghost" size="icon" onClick={() => { 
-                              setEditingUnit(unit); 
-                              setEditUnitName(unit.name); 
-                              setEditUnitSectors(unit.sectors || []); 
-                            }}><Pencil className="w-4 h-4" /></Button>
-                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setItemToDelete({type: 'units', id: unit.id})}><Trash2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" onClick={() => { setEditingUnit(u); setEditUnitName(u.name); setEditUnitSectors(u.sectors || []); }}><Pencil className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setItemToDelete({type: 'units', id: u.id})}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </div>
                       ))}
@@ -286,139 +245,132 @@ export default function SettingsPage() {
                 <Card>
                   <CardHeader><CardTitle className="text-destructive">Categorias Inativas</CardTitle></CardHeader>
                   <CardContent>
-                    {categories.filter(c => !c.active).map(cat => (
-                      <div key={cat.id} className="p-2 border rounded-md mb-2 flex justify-between items-center">
-                        <span>{cat.name}</span>
+                    {categories.filter(c => !c.active).map(c => (
+                      <div key={c.id} className="p-2 border rounded-md mb-2 flex justify-between items-center">
+                        <span>{c.name}</span>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => toggleStatus('categories', cat.id, true)}><RotateCcw className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deletePermanent('categories', cat.id)}><X className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => toggleStatus('categories', c.id, true)}><RotateCcw className="w-4 h-4" /></Button>
                         </div>
                       </div>
                     ))}
-                    {categories.filter(c => !c.active).length === 0 && (
-                      <div className="text-center p-4 text-xs text-muted-foreground">Lixeira vazia</div>
-                    )}
                   </CardContent>
                 </Card>
                 <Card>
                   <CardHeader><CardTitle className="text-destructive">Unidades Inativas</CardTitle></CardHeader>
                   <CardContent>
-                    {units.filter(u => !u.active).map(unit => (
-                      <div key={unit.id} className="p-2 border rounded-md mb-2 flex justify-between items-center">
-                        <span>{unit.name}</span>
+                    {units.filter(u => !u.active).map(u => (
+                      <div key={u.id} className="p-2 border rounded-md mb-2 flex justify-between items-center">
+                        <span>{u.name}</span>
                         <div className="flex gap-1">
-                          <Button variant="ghost" size="icon" onClick={() => toggleStatus('units', unit.id, true)}><RotateCcw className="w-4 h-4" /></Button>
-                          <Button variant="ghost" size="icon" className="text-destructive" onClick={() => deletePermanent('units', unit.id)}><X className="w-4 h-4" /></Button>
+                          <Button variant="ghost" size="icon" onClick={() => toggleStatus('units', u.id, true)}><RotateCcw className="w-4 h-4" /></Button>
                         </div>
                       </div>
                     ))}
-                    {units.filter(u => !u.active).length === 0 && (
-                      <div className="text-center p-4 text-xs text-muted-foreground">Lixeira vazia</div>
-                    )}
                   </CardContent>
                 </Card>
               </div>
             </TabsContent>
           </Tabs>
 
-          {/* Diálogos de Edição */}
-          <Dialog open={!!editingCategory} onOpenChange={() => setEditingCategory(null)}>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Editar Categoria</DialogTitle></DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Nome da Categoria</Label>
-                  <Input value={editCatName} onChange={(e) => setEditCatName(e.target.value)} />
+          {/* Diálogo Edição Categoria - AGORA COM ITENS */}
+          <Dialog open={!!editingCategory} onOpenChange={() => { setEditingCategory(null); setActiveSubForItems(null); }}>
+            <DialogContent className="max-w-2xl">
+              <DialogHeader><DialogTitle>Editar Categoria e Itens</DialogTitle></DialogHeader>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
+                <div className="space-y-4 border-r pr-4">
+                  <div className="space-y-2">
+                    <Label>Nome Principal</Label>
+                    <Input value={editCatName} onChange={(e) => setEditCatName(e.target.value)} />
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Subcategorias</Label>
+                    <div className="flex gap-2">
+                      <Input value={editTempSub} onChange={(e) => setEditTempSub(e.target.value)} placeholder="Nova sub..." />
+                      <Button onClick={() => { setEditCatSubs([...editCatSubs, {name: editTempSub, items: []}]); setEditTempSub(""); }}><Plus className="w-4 h-4" /></Button>
+                    </div>
+                    <ScrollArea className="h-[250px] pr-2">
+                      {editCatSubs.map((sub, i) => (
+                        <div 
+                          key={i} 
+                          className={`flex items-center justify-between p-2 rounded-md mb-1 cursor-pointer transition-colors ${activeSubForItems === i ? 'bg-primary/10 border-primary' : 'bg-muted/50 border-transparent'} border`}
+                          onClick={() => setActiveSubForItems(i)}
+                        >
+                          <span className="text-sm font-medium">{sub.name}</span>
+                          <div className="flex items-center gap-1">
+                            <Badge variant="outline" className="text-[10px]">{sub.items?.length || 0} itens</Badge>
+                            <ChevronRight className="w-4 h-4" />
+                          </div>
+                        </div>
+                      ))}
+                    </ScrollArea>
+                  </div>
                 </div>
-                <div className="space-y-2">
-                  <Label>Subcategorias</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      placeholder="Nova subcategoria..." 
-                      value={editCurrentSub} 
-                      onChange={(e) => setEditCurrentSub(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && editCurrentSub.trim()) {
-                          setEditCatSubs([...editCatSubs, editCurrentSub.trim()]);
-                          setEditCurrentSub("");
-                        }
-                      }}
-                    />
-                    <Button onClick={() => { if(editCurrentSub.trim()) { setEditCatSubs([...editCatSubs, editCurrentSub.trim()]); setEditCurrentSub(""); } }}><Plus className="w-4 h-4" /></Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {editCatSubs.map((s, idx) => (
-                      <Badge key={`${s}-${idx}`}>
-                        {s} <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => setEditCatSubs(editCatSubs.filter((_, i) => i !== idx))} />
-                      </Badge>
-                    ))}
-                  </div>
+
+                <div className="space-y-4">
+                  {activeSubForItems !== null ? (
+                    <>
+                      <div className="flex items-center gap-2 text-primary">
+                        <ListPlus className="w-5 h-5" />
+                        <h3 className="font-bold text-sm">Itens de: {editCatSubs[activeSubForItems].name}</h3>
+                      </div>
+                      <div className="flex gap-2">
+                        <Input 
+                          placeholder="Adicionar item técnico..." 
+                          value={tempItemName} 
+                          onChange={(e) => setTempItemName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if(e.key === 'Enter') {
+                              const updated = [...editCatSubs];
+                              updated[activeSubForItems].items = [...(updated[activeSubForItems].items || []), tempItemName];
+                              setEditCatSubs(updated);
+                              setTempItemName("");
+                            }
+                          }}
+                        />
+                        <Button onClick={() => {
+                          const updated = [...editCatSubs];
+                          updated[activeSubForItems].items = [...(updated[activeSubForItems].items || []), tempItemName];
+                          setEditCatSubs(updated);
+                          setTempItemName("");
+                        }}><Plus className="w-4 h-4" /></Button>
+                      </div>
+                      <ScrollArea className="h-[250px] pr-2">
+                        {editCatSubs[activeSubForItems].items?.map((item, idx) => (
+                          <div key={idx} className="flex items-center justify-between p-2 bg-accent/5 rounded mb-1">
+                            <span className="text-xs">{item}</span>
+                            <X className="w-3 h-3 text-destructive cursor-pointer" onClick={() => {
+                              const updated = [...editCatSubs];
+                              updated[activeSubForItems].items = updated[activeSubForItems].items.filter((_, id) => id !== idx);
+                              setEditCatSubs(updated);
+                            }} />
+                          </div>
+                        ))}
+                      </ScrollArea>
+                    </>
+                  ) : (
+                    <div className="h-full flex flex-col items-center justify-center text-center text-muted-foreground p-8 border-2 border-dashed rounded-lg">
+                      <ListPlus className="w-10 h-10 mb-2 opacity-20" />
+                      <p className="text-xs">Selecione uma subcategoria para gerenciar seus itens específicos.</p>
+                    </div>
+                  )}
                 </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => setEditingCategory(null)}>Cancelar</Button>
-                <Button onClick={handleUpdateCategory} disabled={!editCatName.trim()}>Salvar Alterações</Button>
+                <Button onClick={handleUpdateCategory}>Salvar Alterações</Button>
               </DialogFooter>
             </DialogContent>
           </Dialog>
 
-          <Dialog open={!!editingUnit} onOpenChange={() => setEditingUnit(null)}>
-            <DialogContent>
-              <DialogHeader><DialogTitle>Editar Unidade</DialogTitle></DialogHeader>
-              <div className="space-y-4 py-4">
-                <div className="space-y-2">
-                  <Label>Nome da Unidade</Label>
-                  <Input value={editUnitName} onChange={(e) => setEditUnitName(e.target.value)} />
-                </div>
-                <div className="space-y-2">
-                  <Label>Setores</Label>
-                  <div className="flex gap-2">
-                    <Input 
-                      placeholder="Novo setor..." 
-                      value={editCurrentSector} 
-                      onChange={(e) => setEditCurrentSector(e.target.value)}
-                      onKeyDown={(e) => {
-                        if (e.key === 'Enter' && editCurrentSector.trim()) {
-                          setEditUnitSectors([...editUnitSectors, editCurrentSector.trim()]);
-                          setEditCurrentSector("");
-                        }
-                      }}
-                    />
-                    <Button onClick={() => { if(editCurrentSector.trim()) { setEditUnitSectors([...editUnitSectors, editCurrentSector.trim()]); setEditCurrentSector(""); } }}><Plus className="w-4 h-4" /></Button>
-                  </div>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {editUnitSectors.map((s, idx) => (
-                      <Badge key={`${s}-${idx}`} variant="outline">
-                        {s} <X className="w-3 h-3 ml-1 cursor-pointer" onClick={() => setEditUnitSectors(editUnitSectors.filter((_, i) => i !== idx))} />
-                      </Badge>
-                    ))}
-                  </div>
-                </div>
-              </div>
-              <DialogFooter>
-                <Button variant="outline" onClick={() => setEditingUnit(null)}>Cancelar</Button>
-                <Button onClick={handleUpdateUnit} disabled={!editUnitName.trim()}>Salvar Alterações</Button>
-              </DialogFooter>
-            </DialogContent>
-          </Dialog>
-
-          {/* Diálogo de Confirmação para Desativação */}
           <AlertDialog open={!!itemToDelete} onOpenChange={() => setItemToDelete(null)}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
-                <AlertDialogDescription>
-                  Este item será movido para a lixeira e não aparecerá mais nos formulários de nova demanda.
-                </AlertDialogDescription>
+                <AlertDialogTitle>Mover para Lixeira?</AlertDialogTitle>
+                <AlertDialogDescription>Este item será desativado e não aparecerá nos formulários de demanda.</AlertDialogDescription>
               </AlertDialogHeader>
               <AlertDialogFooter>
-                <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                <AlertDialogAction 
-                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
-                  onClick={() => itemToDelete && toggleStatus(itemToDelete.type, itemToDelete.id, false)}
-                >
-                  Mover para Lixeira
-                </AlertDialogAction>
+                <AlertDialogCancel>Voltar</AlertDialogCancel>
+                <AlertDialogAction onClick={() => itemToDelete && toggleStatus(itemToDelete.type, itemToDelete.id, false)}>Confirmar</AlertDialogAction>
               </AlertDialogFooter>
             </AlertDialogContent>
           </AlertDialog>

@@ -13,6 +13,8 @@
         "description": { "type": "string" },
         "resolution": { "type": "string" },
         "category": { "type": "string" },
+        "subcategory": { "type": "string" },
+        "item": { "type": "string" },
         "source": { "type": "string", "enum": ["structured", "free-text"] }
       },
       "required": ["id", "timestamp", "title", "description", "resolution", "source"]
@@ -23,7 +25,16 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "subcategories": { "type": "array", "items": { "type": "string" } },
+        "subcategories": { 
+          "type": "array", 
+          "items": { 
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "items": { "type": "array", "items": { "type": "string" } }
+            }
+          } 
+        },
         "active": { "type": "boolean" }
       },
       "required": ["id", "name", "subcategories", "active"]
@@ -50,7 +61,7 @@
     },
     "/users/{userId}/categories/{categoryId}": {
       "schema": "#/backend/entities/Category",
-      "description": "Categorias personalizadas do usuário."
+      "description": "Categorias personalizadas do usuário com subcategorias e itens."
     },
     "/users/{userId}/units/{unitId}": {
       "schema": "#/backend/entities/Unit",

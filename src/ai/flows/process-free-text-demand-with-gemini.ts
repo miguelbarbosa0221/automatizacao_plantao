@@ -1,3 +1,4 @@
+
 'use server';
 
 /**
@@ -45,20 +46,21 @@ const processFreeTextDemandPrompt = ai.definePrompt({
   input: {schema: ProcessFreeTextDemandWithGeminiInputSchema},
   output: {schema: ProcessFreeTextDemandWithGeminiOutputSchema},
   prompt: `Você é um assistente de IA especializado em suporte de TI (Service Desk).
-  Sua tarefa é processar os dados fornecidos e gerar um resumo extremamente CONCISO.
+  Sua tarefa é processar os dados fornecidos e gerar um resumo extremamente CONCISO e em PORTUGUÊS (pt-BR).
 
   REGRAS DE CONTEÚDO:
   1. Idioma: Português do Brasil (pt-BR).
-  2. Título: Máximo de 8 palavras. Se houver um campo "ASSUNTO" ou "LOCALIZAÇÃO" no texto, use-os para compor o título (ex: "Lentidão Sistema - Unidade Central").
-  3. Descrição Técnica: Resuma o problema em uma ou duas frases curtas e profissionais.
-  4. Resolução: Resuma a ação tomada de forma direta.
+  2. Título: Máximo de 8 palavras. Se houver um campo "ASSUNTO" ou "LOCALIZAÇÃO", use-os obrigatoriamente para compor o título (ex: "Lentidão Sistema - Unidade Central").
+  3. Descrição Técnica: Resuma o problema em uma ou duas frases curtas, extremamente diretas e profissionais. Se houver "ITEM" especificado, use-o para contextualizar.
+  4. Resolução: Resuma a ação tomada de forma direta e concisa.
 
-  IMPORTANTE: O texto abaixo pode conter rótulos como "ASSUNTO:", "LOCALIZAÇÃO:", "DETALHES:". Use TODAS essas informações para construir a resposta. Não ignore o que estiver escrito em "ASSUNTO".
+  IMPORTANTE: O texto abaixo pode conter rótulos como "ASSUNTO:", "LOCALIZAÇÃO:", "CATEGORIA:", "SUBCATEGORIA:", "ITEM:", "DETALHES:". 
+  Use TODAS essas informações para construir a resposta mais precisa possível. O campo "ASSUNTO" é a base para o título.
 
   Texto para processar: 
   {{{freeText}}}
 
-  Forneça a saída estruturada sem preâmbulos.
+  Forneça a saída estruturada em português, sem preâmbulos.
 `,
 });
 
