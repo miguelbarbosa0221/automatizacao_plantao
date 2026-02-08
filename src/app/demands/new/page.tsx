@@ -1,4 +1,3 @@
-
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -29,7 +28,7 @@ export default function NewDemandPage() {
   const db = useFirestore()
   const { user } = useUser()
 
-  // Queries memorizadas para o Firestore
+  // Queries memorizadas para evitar loops e exceções de cliente
   const categoriesQuery = useMemoFirebase(() => {
     if (!db || !user) return null;
     return collection(db, "users", user.uid, "categories");
@@ -40,11 +39,11 @@ export default function NewDemandPage() {
     return collection(db, "users", user.uid, "units");
   }, [db, user?.uid]);
 
-  const { data: categories, isLoading: isCatLoading } = useCollection(categoriesQuery);
-  const { data: units, isLoading: isUnitLoading } = useCollection(unitsQuery);
+  const { data: categoriesData, isLoading: isCatLoading } = useCollection(categoriesQuery);
+  const { data: unitsData, isLoading: isUnitLoading } = useCollection(unitsQuery);
 
-  const activeCategories = useMemo(() => categories?.filter(c => c.active) || [], [categories]);
-  const activeUnits = useMemo(() => units?.filter(u => u.active) || [], [units]);
+  const activeCategories = useMemo(() => (categoriesData || []).filter(c => c.active), [categoriesData]);
+  const activeUnits = useMemo(() => (unitsData || []).filter(u => u.active), [unitsData]);
 
   // Estado do formulário
   const [selectedUnitName, setSelectedUnitName] = useState("")
@@ -68,7 +67,7 @@ export default function NewDemandPage() {
       setResult(output);
       toast({ title: "Sucesso", description: "Demanda processada com sucesso!" });
     } catch (error) {
-      toast({ title: "Erro", description: "Falha ao processar demanda com Gemini." });
+      toast({ title: "Erro", description: "Falha ao processar demanda." });
     } finally {
       setLoading(false);
     }
@@ -81,18 +80,20 @@ export default function NewDemandPage() {
     }
     setLoading(true);
     try {
+      // Incluindo explicitamente o ASSUNTO e LOCALIZAÇÃO para a IA processar corretamente
       const textToProcess = `
         LOCALIZAÇÃO: Unidade ${selectedUnitName}, Setor ${selectedSector}
         CATEGORIA: ${selectedCategoryName}
-        SUBCATEGORIA: ${subcategory || 'Não especificada'}
+        SUBCATEGORIA: ${subcategory || 'Geral'}
         ASSUNTO: ${subject}
         DETALHES DO ATENDIMENTO: ${details}
-      `;
+      `.trim();
+
       const output = await processFreeTextDemandWithGemini({ freeText: textToProcess });
       setResult(output);
       toast({ title: "Sucesso", description: "Dados estruturados e padronizados." });
     } catch (error) {
-      toast({ title: "Erro", description: "Falha ao processar demanda." });
+      toast({ title: "Erro", description: "Falha ao processar demanda estruturada." });
     } finally {
       setLoading(false);
     }
@@ -112,8 +113,8 @@ export default function NewDemandPage() {
     };
 
     setDocumentNonBlocking(demandRef, newDemand, { merge: true });
-    toast({ title: "Salvo!", description: "Demanda salva no Firestore." });
-    router.push("/");
+    toast({ title: "Salvo!", description: "Demanda registrada com sucesso." });
+    router.push("/demands/history");
   }
 
   const copyToClipboard = () => {
@@ -161,7 +162,6 @@ export default function NewDemandPage() {
                               {activeUnits.map(u => (
                                 <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>
                               ))}
-                              {!isUnitLoading && activeUnits.length === 0 && <div className="p-2 text-xs text-center text-muted-foreground">Vá em Configurações para cadastrar unidades</div>}
                             </SelectContent>
                           </Select>
                         </div>
@@ -192,7 +192,6 @@ export default function NewDemandPage() {
                             {activeCategories.map(cat => (
                               <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>
                             ))}
-                            {!isCatLoading && activeCategories.length === 0 && <div className="p-2 text-xs text-center text-muted-foreground">Vá em Configurações para cadastrar categorias</div>}
                           </SelectContent>
                         </Select>
                       </div>
@@ -212,9 +211,9 @@ export default function NewDemandPage() {
                     </div>
 
                     <div className="space-y-2">
-                      <Label>Assunto Breve</Label>
+                      <Label>Assunto Breve (Será usado para o título)</Label>
                       <Input 
-                        placeholder="Ex: Lentidão no sistema" 
+                        placeholder="Ex: Lentidão no sistema / Troca de mouse" 
                         value={subject}
                         onChange={(e) => setSubject(e.target.value)}
                       />
@@ -223,7 +222,7 @@ export default function NewDemandPage() {
                     <div className="space-y-2">
                       <Label>O que foi realizado?</Label>
                       <Textarea 
-                        placeholder="Descreva o problema e a solução..." 
+                        placeholder="Descreva o problema e a solução detalhadamente..." 
                         className="min-h-[120px]"
                         value={details}
                         onChange={(e) => setDetails(e.target.value)}
@@ -253,7 +252,7 @@ export default function NewDemandPage() {
                       <Label htmlFor="freeText">Descrição da ocorrência</Label>
                       <Textarea 
                         id="freeText" 
-                        placeholder="Ex: O usuário João disse que a impressora do 2º andar parou..." 
+                        placeholder="Ex: O usuário João disse que a impressora do 2º andar parou e eu tive que reiniciar o spooler..." 
                         className="min-h-[150px]"
                         value={freeText}
                         onChange={(e) => setFreeText(e.target.value)}
@@ -279,7 +278,7 @@ export default function NewDemandPage() {
                   <CardHeader className="flex flex-row items-center justify-between">
                     <div>
                       <CardTitle className="text-xl">Resultado Processado</CardTitle>
-                      <CardDescription>Dados sincronizados e prontos para o Help Desk.</CardDescription>
+                      <CardDescription>Dados prontos para exportação ao Help Desk.</CardDescription>
                     </div>
                     <Button variant="outline" size="icon" onClick={copyToClipboard}>
                       <Copy className="w-4 h-4" />
@@ -287,7 +286,7 @@ export default function NewDemandPage() {
                   </CardHeader>
                   <CardContent className="space-y-6">
                     <div className="space-y-1">
-                      <Label className="text-xs uppercase text-muted-foreground font-bold">Título</Label>
+                      <Label className="text-xs uppercase text-muted-foreground font-bold">Título do Chamado</Label>
                       <div className="p-3 bg-white rounded-md border text-sm font-medium">{result.title}</div>
                     </div>
                     <div className="space-y-1">

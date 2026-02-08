@@ -1,22 +1,19 @@
 'use server';
 
 /**
- * @fileOverview Processes free-text IT support demands using Gemini to extract structured information.
+ * @fileOverview Processes free-text and structured IT support demands using Gemini.
  *
- * This file defines a Genkit flow that takes a free-text description of an IT issue,
- * uses the Gemini API to extract a title, detailed description, and suggested resolution,
- * and returns these structured elements.
+ * This file defines a Genkit flow that takes a description of an IT issue,
+ * extracts/summarizes it into a title, technical description, and resolution.
  *
- * @exports processFreeTextDemandWithGemini - The main function to process the free-text demand.
- * @exports ProcessFreeTextDemandWithGeminiInput - The input type for the processFreeTextDemandWithGemini function.
- * @exports ProcessFreeTextDemandWithGeminiOutput - The output type for the processFreeTextDemandWithGemini function.
+ * @exports processFreeTextDemandWithGemini - The main function to process the demand.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const ProcessFreeTextDemandWithGeminiInputSchema = z.object({
-  freeText: z.string().describe('Free-text description of the IT support demand.'),
+  freeText: z.string().describe('Texto livre ou estruturado da demanda de suporte de TI.'),
 });
 
 export type ProcessFreeTextDemandWithGeminiInput = z.infer<
@@ -24,13 +21,13 @@ export type ProcessFreeTextDemandWithGeminiInput = z.infer<
 >;
 
 const ProcessFreeTextDemandWithGeminiOutputSchema = z.object({
-  title: z.string().describe('A concise title summarizing the IT support demand.'),
+  title: z.string().describe('Um título conciso resumindo a demanda.'),
   description: z
     .string()
-    .describe('A brief technical summary of the problem.'),
+    .describe('Um resumo técnico breve do problema.'),
   resolution: z
     .string()
-    .describe('A short summary of the resolution steps.'),
+    .describe('Um resumo curto dos passos de resolução.'),
 });
 
 export type ProcessFreeTextDemandWithGeminiOutput = z.infer<
@@ -47,19 +44,21 @@ const processFreeTextDemandPrompt = ai.definePrompt({
   name: 'processFreeTextDemandPrompt',
   input: {schema: ProcessFreeTextDemandWithGeminiInputSchema},
   output: {schema: ProcessFreeTextDemandWithGeminiOutputSchema},
-  prompt: `Você é um assistente de IA especializado em processar chamados de suporte de TI.
-  Sua tarefa é extrair informações de um texto livre e gerar um resumo extremamente CONCISO.
+  prompt: `Você é um assistente de IA especializado em suporte de TI (Service Desk).
+  Sua tarefa é processar os dados fornecidos e gerar um resumo extremamente CONCISO.
 
-  REGRAS OBRIGATÓRIAS:
-  1. Idioma: Use exclusivamente Português do Brasil (pt-BR).
-  2. Concisão: Seja o mais breve possível. Evite frases longas ou explicativas.
-  3. Título: Máximo de 8 palavras. Deve ser direto ao ponto (ex: "Troca de Toner - Impressora 2º Andar").
-  4. Descrição: Resuma o problema técnico em uma ou duas frases curtas.
-  5. Resolução: Resuma a ação tomada de forma objetiva.
+  REGRAS DE CONTEÚDO:
+  1. Idioma: Português do Brasil (pt-BR).
+  2. Título: Máximo de 8 palavras. Se houver um campo "ASSUNTO" ou "LOCALIZAÇÃO" no texto, use-os para compor o título (ex: "Lentidão Sistema - Unidade Central").
+  3. Descrição Técnica: Resuma o problema em uma ou duas frases curtas e profissionais.
+  4. Resolução: Resuma a ação tomada de forma direta.
 
-  Texto livre para processar: {{{freeText}}}
+  IMPORTANTE: O texto abaixo pode conter rótulos como "ASSUNTO:", "LOCALIZAÇÃO:", "DETALHES:". Use TODAS essas informações para construir a resposta. Não ignore o que estiver escrito em "ASSUNTO".
 
-  Forneça a saída estruturada sem preâmbulos ou saudações.
+  Texto para processar: 
+  {{{freeText}}}
+
+  Forneça a saída estruturada sem preâmbulos.
 `,
 });
 

@@ -1,4 +1,3 @@
-
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -11,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
 import { Plus, Trash2, Building2, Tags, RotateCcw, X, Pencil, Loader2 } from "lucide-react"
-import { useState } from "react"
+import { useState, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc } from "firebase/firestore"
@@ -23,6 +22,16 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function SettingsPage() {
   const { toast } = useToast()
@@ -40,8 +49,11 @@ export default function SettingsPage() {
     return collection(db, "users", user.uid, "units");
   }, [db, user?.uid]);
 
-  const { data: categories, isLoading: isCatLoading } = useCollection(categoriesQuery);
-  const { data: units, isLoading: isUnitLoading } = useCollection(unitsQuery);
+  const { data: categoriesData, isLoading: isCatLoading } = useCollection(categoriesQuery);
+  const { data: unitsData, isLoading: isUnitLoading } = useCollection(unitsQuery);
+
+  const categories = useMemo(() => categoriesData || [], [categoriesData]);
+  const units = useMemo(() => unitsData || [], [unitsData]);
 
   // Estados locais para formulários de criação
   const [newCatName, setNewCatName] = useState("")
@@ -63,6 +75,9 @@ export default function SettingsPage() {
   const [editUnitSectors, setEditUnitSectors] = useState<string[]>([])
   const [editCurrentSector, setEditCurrentSector] = useState("")
 
+  // Estados para exclusão/desativação
+  const [itemToDelete, setItemToDelete] = useState<{type: 'categories' | 'units', id: string} | null>(null)
+
   // CRUD Categorias
   const handleAddCategory = () => {
     if (!newCatName.trim() || !user || !db) return;
@@ -76,7 +91,7 @@ export default function SettingsPage() {
     }, { merge: true });
     setNewCatName(""); 
     setCatSubsList([]);
-    toast({ title: "Sucesso", description: "Categoria salva no banco de dados." });
+    toast({ title: "Sucesso", description: "Categoria salva." });
   }
 
   const handleUpdateCategory = () => {
@@ -103,7 +118,7 @@ export default function SettingsPage() {
     }, { merge: true });
     setNewUnitName(""); 
     setUnitSectorsList([]);
-    toast({ title: "Sucesso", description: "Unidade salva no banco de dados." });
+    toast({ title: "Sucesso", description: "Unidade salva." });
   }
 
   const handleUpdateUnit = () => {
@@ -121,6 +136,7 @@ export default function SettingsPage() {
     if (!user || !db) return;
     const docRef = doc(db, "users", user.uid, type, id);
     updateDocumentNonBlocking(docRef, { active });
+    setItemToDelete(null);
   }
 
   const deletePermanent = (type: 'categories' | 'units', id: string) => {
@@ -153,7 +169,7 @@ export default function SettingsPage() {
                     <Input placeholder="Ex: Hardware" value={newCatName} onChange={(e) => setNewCatName(e.target.value)} />
                     <div className="flex gap-2">
                       <Input 
-                        placeholder="Subcategoria..." 
+                        placeholder="Adicionar Subcategoria..." 
                         value={currentSub} 
                         onChange={(e) => setCurrentSub(e.target.value)}
                         onKeyDown={(e) => {
@@ -176,18 +192,18 @@ export default function SettingsPage() {
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader><CardTitle>Ativas</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>Categorias Ativas</CardTitle></CardHeader>
                   <CardContent>
                     <ScrollArea className="h-[400px]">
                       {isCatLoading ? (
                         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
-                      ) : (categories || []).filter(c => c.active).length === 0 ? (
-                        <div className="text-center p-8 text-muted-foreground text-sm">Nenhuma categoria cadastrada.</div>
-                      ) : (categories || []).filter(c => c.active).map(cat => (
+                      ) : categories.filter(c => c.active).length === 0 ? (
+                        <div className="text-center p-8 text-muted-foreground text-sm">Nenhuma categoria ativa.</div>
+                      ) : categories.filter(c => c.active).map(cat => (
                         <div key={cat.id} className="p-3 border rounded-md mb-2 flex justify-between items-center bg-card">
                           <div>
                             <div className="font-bold">{cat.name}</div>
-                            <div className="text-[10px] text-muted-foreground">{cat.subcategories?.join(", ") || "Sem subcategorias"}</div>
+                            <div className="text-[10px] text-muted-foreground">{cat.subcategories?.join(", ") || "Geral"}</div>
                           </div>
                           <div className="flex gap-1">
                             <Button variant="ghost" size="icon" onClick={() => { 
@@ -195,7 +211,7 @@ export default function SettingsPage() {
                               setEditCatName(cat.name); 
                               setEditCatSubs(cat.subcategories || []); 
                             }}><Pencil className="w-4 h-4" /></Button>
-                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => toggleStatus('categories', cat.id, false)}><Trash2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setItemToDelete({type: 'categories', id: cat.id})}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </div>
                       ))}
@@ -213,7 +229,7 @@ export default function SettingsPage() {
                     <Input placeholder="Ex: Hospital Central" value={newUnitName} onChange={(e) => setNewUnitName(e.target.value)} />
                     <div className="flex gap-2">
                       <Input 
-                        placeholder="Setor..." 
+                        placeholder="Adicionar Setor..." 
                         value={currentSector} 
                         onChange={(e) => setCurrentSector(e.target.value)}
                         onKeyDown={(e) => {
@@ -236,14 +252,14 @@ export default function SettingsPage() {
                   </CardContent>
                 </Card>
                 <Card>
-                  <CardHeader><CardTitle>Ativas</CardTitle></CardHeader>
+                  <CardHeader><CardTitle>Unidades Ativas</CardTitle></CardHeader>
                   <CardContent>
                     <ScrollArea className="h-[400px]">
                       {isUnitLoading ? (
                         <div className="flex justify-center p-8"><Loader2 className="animate-spin text-primary" /></div>
-                      ) : (units || []).filter(u => u.active).length === 0 ? (
-                        <div className="text-center p-8 text-muted-foreground text-sm">Nenhuma unidade cadastrada.</div>
-                      ) : (units || []).filter(u => u.active).map(unit => (
+                      ) : units.filter(u => u.active).length === 0 ? (
+                        <div className="text-center p-8 text-muted-foreground text-sm">Nenhuma unidade ativa.</div>
+                      ) : units.filter(u => u.active).map(unit => (
                         <div key={unit.id} className="p-3 border rounded-md mb-2 flex justify-between items-center bg-card">
                           <div>
                             <div className="font-bold">{unit.name}</div>
@@ -255,7 +271,7 @@ export default function SettingsPage() {
                               setEditUnitName(unit.name); 
                               setEditUnitSectors(unit.sectors || []); 
                             }}><Pencil className="w-4 h-4" /></Button>
-                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => toggleStatus('units', unit.id, false)}><Trash2 className="w-4 h-4" /></Button>
+                            <Button variant="ghost" size="icon" className="text-destructive" onClick={() => setItemToDelete({type: 'units', id: unit.id})}><Trash2 className="w-4 h-4" /></Button>
                           </div>
                         </div>
                       ))}
@@ -270,7 +286,7 @@ export default function SettingsPage() {
                 <Card>
                   <CardHeader><CardTitle className="text-destructive">Categorias Inativas</CardTitle></CardHeader>
                   <CardContent>
-                    {(categories || []).filter(c => !c.active).map(cat => (
+                    {categories.filter(c => !c.active).map(cat => (
                       <div key={cat.id} className="p-2 border rounded-md mb-2 flex justify-between items-center">
                         <span>{cat.name}</span>
                         <div className="flex gap-1">
@@ -279,7 +295,7 @@ export default function SettingsPage() {
                         </div>
                       </div>
                     ))}
-                    {(categories || []).filter(c => !c.active).length === 0 && (
+                    {categories.filter(c => !c.active).length === 0 && (
                       <div className="text-center p-4 text-xs text-muted-foreground">Lixeira vazia</div>
                     )}
                   </CardContent>
@@ -287,7 +303,7 @@ export default function SettingsPage() {
                 <Card>
                   <CardHeader><CardTitle className="text-destructive">Unidades Inativas</CardTitle></CardHeader>
                   <CardContent>
-                    {(units || []).filter(u => !u.active).map(unit => (
+                    {units.filter(u => !u.active).map(unit => (
                       <div key={unit.id} className="p-2 border rounded-md mb-2 flex justify-between items-center">
                         <span>{unit.name}</span>
                         <div className="flex gap-1">
@@ -296,7 +312,7 @@ export default function SettingsPage() {
                         </div>
                       </div>
                     ))}
-                    {(units || []).filter(u => !u.active).length === 0 && (
+                    {units.filter(u => !u.active).length === 0 && (
                       <div className="text-center p-4 text-xs text-muted-foreground">Lixeira vazia</div>
                     )}
                   </CardContent>
@@ -318,7 +334,7 @@ export default function SettingsPage() {
                   <Label>Subcategorias</Label>
                   <div className="flex gap-2">
                     <Input 
-                      placeholder="Nova sub..." 
+                      placeholder="Nova subcategoria..." 
                       value={editCurrentSub} 
                       onChange={(e) => setEditCurrentSub(e.target.value)}
                       onKeyDown={(e) => {
@@ -385,6 +401,27 @@ export default function SettingsPage() {
               </DialogFooter>
             </DialogContent>
           </Dialog>
+
+          {/* Diálogo de Confirmação para Desativação */}
+          <AlertDialog open={!!itemToDelete} onOpenChange={() => setItemToDelete(null)}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Você tem certeza?</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Este item será movido para a lixeira e não aparecerá mais nos formulários de nova demanda.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Cancelar</AlertDialogCancel>
+                <AlertDialogAction 
+                  className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+                  onClick={() => itemToDelete && toggleStatus(itemToDelete.type, itemToDelete.id, false)}
+                >
+                  Mover para Lixeira
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         </main>
       </SidebarInset>
     </div>
