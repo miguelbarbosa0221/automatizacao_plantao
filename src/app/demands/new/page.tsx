@@ -3,24 +3,23 @@
 
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
+import { Card, CardContent } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Textarea } from "@/components/ui/textarea"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { useState, useMemo } from "react"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
+import { useState, useMemo, useEffect } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
-import { Loader2, Wand2, Copy, CheckCircle2, MapPin, Tag, Lightbulb, History, LayoutGrid, AlignLeft } from "lucide-react"
+import { Loader2, Wand2, CheckCircle2, Save, Plus, History, Lightbulb, Zap } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
-import { useRouter } from "next/navigation"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc, query, where, limit } from "firebase/firestore"
 import { setDocumentNonBlocking } from "@/firebase/non-blocking-updates"
+import { cn } from "@/lib/utils"
 
-// Helper para normalizar subcategorias legadas (strings) para objetos
+// Helper para normalizar subcategorias
 const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
   return (subs || []).map(s => {
     if (typeof s === 'string') return { name: s, items: [] };
@@ -28,13 +27,21 @@ const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
   });
 };
 
-export default function NewDemandPage() {
-  const [activeTab, setActiveTab] = useState("structured")
-  const [loading, setLoading] = useState(false)
-  const [result, setResult] = useState<{title: string, description: string, resolution: string} | null>(null)
-  const [freeText, setFreeText] = useState("")
+interface RowData {
+  id: string;
+  unitName: string;
+  sector: string;
+  categoryName: string;
+  subName: string;
+  itemName: string;
+  freeText: string;
+  details: string;
+  isProcessing: boolean;
+  isSaved: boolean;
+}
+
+export default function HighPerformanceRegistryPage() {
   const { toast } = useToast()
-  const router = useRouter()
   const db = useFirestore()
   const { user } = useUser()
 
@@ -55,100 +62,65 @@ export default function NewDemandPage() {
   const activeCategories = useMemo(() => (categoriesData || []).filter(c => c.active), [categoriesData]);
   const activeUnits = useMemo(() => (unitsData || []).filter(u => u.active), [unitsData]);
 
-  const [selectedUnitName, setSelectedUnitName] = useState("")
-  const [selectedSector, setSelectedSector] = useState("")
-  const [selectedCategoryName, setSelectedCategoryName] = useState("")
-  const [selectedSubName, setSelectedSubName] = useState("")
-  const [selectedItemName, setSelectedItemName] = useState("")
-  const [subject, setSubject] = useState("")
-  const [details, setDetails] = useState("")
+  // Estado das linhas do Grid
+  const [rows, setRows] = useState<RowData[]>([
+    { id: Math.random().toString(36).substr(2, 9), unitName: "", sector: "", categoryName: "", subName: "", itemName: "", freeText: "", details: "", isProcessing: false, isSaved: false }
+  ]);
 
-  const currentUnit = useMemo(() => activeUnits.find(u => u.name === selectedUnitName), [activeUnits, selectedUnitName]);
-  const currentCategory = useMemo(() => activeCategories.find(c => c.name === selectedCategoryName), [activeCategories, selectedCategoryName]);
-  
-  const currentSubcategories = useMemo(() => normalizeSubs(currentCategory?.subcategories), [currentCategory]);
-  const currentSub = useMemo(() => currentSubcategories.find(s => s.name === selectedSubName), [currentSubcategories, selectedSubName]);
+  const updateRow = (id: string, updates: Partial<RowData>) => {
+    setRows(prev => prev.map(row => row.id === id ? { ...row, ...updates } : row));
+  };
 
-  // Sugestões inteligentes baseadas no histórico privado do usuário
-  const suggestionsQuery = useMemoFirebase(() => {
-    if (!db || !user || !selectedCategoryName) return null;
-    return query(
-      collection(db, "users", user.uid, "demands"),
-      where("category", "==", selectedCategoryName),
-      limit(10)
-    );
-  }, [db, user, selectedCategoryName]);
-
-  const { data: historicalDemands } = useCollection(suggestionsQuery);
-
-  const uniqueSuggestions = useMemo(() => {
-    if (!historicalDemands) return [];
-    const resolutions = historicalDemands.map(d => d.resolution);
-    return Array.from(new Set(resolutions)).slice(0, 3);
-  }, [historicalDemands]);
-
-  const handleProcessFreeText = async () => {
-    if (!freeText.trim()) {
-      toast({ title: "Erro", description: "Por favor, insira o texto da demanda." });
+  const handleSaveRow = async (row: RowData) => {
+    if (!row.categoryName || !row.unitName || (!row.freeText && !row.details)) {
+      toast({ title: "Erro", description: "Preencha os campos essenciais da linha.", variant: "destructive" });
       return;
     }
-    setLoading(true);
-    try {
-      const output = await processFreeTextDemandWithGemini({ freeText });
-      setResult(output);
-      toast({ title: "Sucesso", description: "Demanda processada com sucesso!" });
-    } catch (error) {
-      toast({ title: "Erro", description: "Falha ao processar demanda." });
-    } finally {
-      setLoading(false);
-    }
-  }
 
-  const handleProcessStructured = async () => {
-    if (!selectedCategoryName || !details || !selectedUnitName || !selectedSector) {
-      toast({ title: "Erro", description: "Preencha todos os campos obrigatórios." });
-      return;
-    }
-    setLoading(true);
+    updateRow(row.id, { isProcessing: true });
+
     try {
       const textToProcess = `
-        LOCALIZAÇÃO: Unidade ${selectedUnitName}, Setor ${selectedSector}
-        CATEGORIA: ${selectedCategoryName}
-        SUBCATEGORIA: ${selectedSubName || 'Geral'}
-        ITEM: ${selectedItemName || 'Não especificado'}
-        INFORMAÇÃO LIVRE: ${subject || 'Relato estruturado'}
-        DETALHES DO ATENDIMENTO: ${details}
+        LOCALIZAÇÃO: Unidade ${row.unitName}, Setor ${row.sector}
+        CATEGORIA: ${row.categoryName}
+        SUBCATEGORIA: ${row.subName || 'Geral'}
+        ITEM: ${row.itemName || 'Não especificado'}
+        INFORMAÇÃO LIVRE: ${row.freeText || 'Relato estruturado'}
+        DETALHES DO ATENDIMENTO: ${row.details}
       `.trim();
 
-      const output = await processFreeTextDemandWithGemini({ freeText: textToProcess });
-      setResult(output);
-      toast({ title: "Sucesso", description: "Dados estruturados e padronizados." });
+      const aiResult = await processFreeTextDemandWithGemini({ freeText: textToProcess });
+      
+      const demandId = row.id;
+      const demandRef = doc(db!, "users", user!.uid, "demands", demandId);
+      
+      const newDemand = {
+        ...aiResult,
+        id: demandId,
+        timestamp: new Date().toISOString(),
+        source: 'structured',
+        category: row.categoryName,
+        subcategory: row.subName,
+        item: row.itemName
+      };
+
+      setDocumentNonBlocking(demandRef, newDemand, { merge: true });
+      
+      updateRow(row.id, { isProcessing: false, isSaved: true });
+      toast({ title: "Salvo", description: "Demanda registrada e processada." });
+
+      // Instancia nova linha automaticamente se for a última
+      if (rows.indexOf(row) === rows.length - 1) {
+        setRows(prev => [
+          ...prev,
+          { id: Math.random().toString(36).substr(2, 9), unitName: "", sector: "", categoryName: "", subName: "", itemName: "", freeText: "", details: "", isProcessing: false, isSaved: false }
+        ]);
+      }
     } catch (error) {
-      toast({ title: "Erro", description: "Falha ao processar demanda estruturada." });
-    } finally {
-      setLoading(false);
+      updateRow(row.id, { isProcessing: false });
+      toast({ title: "Erro", description: "Falha ao processar linha.", variant: "destructive" });
     }
-  }
-
-  const handleSave = () => {
-    if (!result || !user || !db) return;
-    const demandId = Math.random().toString(36).substr(2, 9);
-    const demandRef = doc(db, "users", user.uid, "demands", demandId);
-    
-    const newDemand = {
-      ...result,
-      id: demandId,
-      timestamp: new Date().toISOString(),
-      source: activeTab as 'structured' | 'free-text',
-      category: activeTab === 'structured' ? selectedCategoryName : 'Geral',
-      subcategory: activeTab === 'structured' ? selectedSubName : '',
-      item: activeTab === 'structured' ? selectedItemName : ''
-    };
-
-    setDocumentNonBlocking(demandRef, newDemand, { merge: true });
-    toast({ title: "Salvo!", description: "Demanda registrada com sucesso." });
-    router.push("/demands/history");
-  }
+  };
 
   return (
     <div className="flex h-screen bg-background">
@@ -156,206 +128,180 @@ export default function NewDemandPage() {
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <h1 className="text-lg font-semibold font-headline">Nova Demanda</h1>
+          <div className="flex items-center gap-2">
+            <Zap className="w-5 h-5 text-primary animate-pulse" />
+            <h1 className="text-lg font-semibold font-headline">Registro de Alta Performance</h1>
+          </div>
+          <Badge className="ml-4 bg-primary/10 text-primary border-primary/20 hover:bg-primary/20">Modo Fluxo Contínuo</Badge>
         </header>
-        <main className="flex-1 overflow-auto p-6 max-w-5xl mx-auto w-full">
-          <div className="space-y-6">
-            <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-2 mb-8">
-                <TabsTrigger value="structured" className="gap-2"><LayoutGrid className="w-4 h-4" /> Interface Estruturada</TabsTrigger>
-                <TabsTrigger value="free-text" className="gap-2"><AlignLeft className="w-4 h-4" /> Texto Livre</TabsTrigger>
-              </TabsList>
-              
-              <TabsContent value="structured">
-                <Card className="border-none shadow-lg overflow-hidden">
-                  <CardHeader className="bg-primary/5 pb-8">
-                    <CardTitle>Fluxo de Registro Linear</CardTitle>
-                    <CardDescription>Mapeie a demanda através do grid dinâmico para padronização imediata.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-8 mt-[-20px] px-6">
-                    {/* Grid Dinâmico (Estilo Planilha) */}
-                    <div className="grid grid-cols-1 md:grid-cols-5 gap-4 p-4 bg-white rounded-xl border shadow-sm">
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1 px-1">
-                          <MapPin className="w-3 h-3" /> Unidade
-                        </Label>
-                        <Select onValueChange={setSelectedUnitName} value={selectedUnitName}>
-                          <SelectTrigger className="h-10 bg-muted/20 border-none focus:ring-1 focus:ring-primary">
-                            <SelectValue placeholder={isUnitLoading ? "..." : "Local"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {activeUnits.map(u => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1 px-1">
-                          Setor
-                        </Label>
-                        <Select onValueChange={setSelectedSector} disabled={!selectedUnitName} value={selectedSector}>
-                          <SelectTrigger className="h-10 bg-muted/20 border-none focus:ring-1 focus:ring-primary">
-                            <SelectValue placeholder="Área" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {currentUnit?.sectors?.map((s: string) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1 px-1">
-                          <Tag className="w-3 h-3" /> Categoria
-                        </Label>
-                        <Select onValueChange={(val) => { setSelectedCategoryName(val); setSelectedSubName(""); setSelectedItemName(""); }} value={selectedCategoryName}>
-                          <SelectTrigger className="h-10 bg-muted/20 border-none focus:ring-1 focus:ring-primary">
-                            <SelectValue placeholder={isCatLoading ? "..." : "Grupo"} />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {activeCategories.map(cat => <SelectItem key={cat.id} value={cat.name}>{cat.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1 px-1">
-                          Subcategoria
-                        </Label>
-                        <Select onValueChange={(val) => { setSelectedSubName(val); setSelectedItemName(""); }} disabled={!selectedCategoryName} value={selectedSubName}>
-                          <SelectTrigger className="h-10 bg-muted/20 border-none focus:ring-1 focus:ring-primary">
-                            <SelectValue placeholder="Tipo" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {currentSubcategories.map(sub => <SelectItem key={sub.name} value={sub.name}>{sub.name}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                      <div className="space-y-2">
-                        <Label className="text-[10px] uppercase font-bold text-muted-foreground flex items-center gap-1 px-1">
-                          Atividade
-                        </Label>
-                        <Select onValueChange={setSelectedItemName} disabled={!selectedSubName} value={selectedItemName}>
-                          <SelectTrigger className="h-10 bg-muted/20 border-none focus:ring-1 focus:ring-primary">
-                            <SelectValue placeholder="Item" />
-                          </SelectTrigger>
-                          <SelectContent>
-                            {currentSub?.items?.map((item: string) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
-                          </SelectContent>
-                        </Select>
-                      </div>
-                    </div>
-
-                    <div className="grid md:grid-cols-2 gap-6">
-                      <div className="space-y-2">
-                        <Label className="flex items-center gap-2 text-xs font-bold text-muted-foreground uppercase">
-                          <History className="w-4 h-4" /> Informação Livre
-                          <Badge variant="outline" className="text-[9px] font-normal uppercase">Contexto</Badge>
-                        </Label>
-                        <Input 
-                          placeholder="Relato rápido do que o usuário disse..." 
-                          className="h-12 border-primary/20 focus:border-primary"
-                          value={subject} 
-                          onChange={(e) => setSubject(e.target.value)} 
-                        />
-                      </div>
-
-                      <div className="space-y-2">
-                        <div className="flex items-center justify-between">
-                          <Label className="text-xs font-bold text-muted-foreground uppercase">Resolução Técnica</Label>
-                          {uniqueSuggestions.length > 0 && (
-                            <div className="flex items-center gap-1 text-[10px] text-primary font-bold uppercase animate-pulse">
-                              <Lightbulb className="w-3 h-3" /> Sugestões Inteligentes
-                            </div>
-                          )}
-                        </div>
-                        
-                        {uniqueSuggestions.length > 0 && (
-                          <div className="flex flex-wrap gap-2 mb-2">
-                            {uniqueSuggestions.map((sug, i) => (
-                              <Button 
-                                key={i} 
-                                variant="outline" 
-                                size="sm" 
-                                className="text-[10px] h-6 bg-primary/5 border-primary/10 hover:bg-primary/10 hover:border-primary text-primary-foreground/80"
-                                onClick={() => setDetails(sug)}
-                              >
-                                {sug.slice(0, 30)}...
-                              </Button>
-                            ))}
-                          </div>
-                        )}
-
-                        <Textarea 
-                          placeholder="Descreva a solução aplicada..." 
-                          className="min-h-[100px] border-primary/20 focus:border-primary" 
-                          value={details} 
-                          onChange={(e) => setDetails(e.target.value)} 
-                        />
-                      </div>
-                    </div>
-
-                    <Button className="w-full gap-2 font-medium h-14 text-lg shadow-xl shadow-primary/20" onClick={handleProcessStructured} disabled={loading}>
-                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-6 h-6" />}
-                      Processar e Padronizar Chamado
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-
-              <TabsContent value="free-text">
-                <Card className="border-none shadow-lg">
-                  <CardHeader>
-                    <CardTitle>Demanda via Texto Livre</CardTitle>
-                    <CardDescription>Digite a ocorrência como ela foi relatada para extração automática.</CardDescription>
-                  </CardHeader>
-                  <CardContent className="space-y-4">
-                    <div className="space-y-2">
-                      <Label htmlFor="freeText">Relato do Atendimento</Label>
-                      <Textarea id="freeText" placeholder="Ex: Usuário do setor X informou que o sistema Y não abre..." className="min-h-[200px]" value={freeText} onChange={(e) => setFreeText(e.target.value)} />
-                    </div>
-                    <Button className="w-full gap-2 font-medium h-12" onClick={handleProcessFreeText} disabled={loading}>
-                      {loading ? <Loader2 className="animate-spin" /> : <Wand2 className="w-5 h-5" />}
-                      Processar com Gemini
-                    </Button>
-                  </CardContent>
-                </Card>
-              </TabsContent>
-            </Tabs>
-
-            {result && (
-              <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                <Card className="border-none shadow-2xl bg-accent/5 overflow-hidden">
-                  <div className="bg-accent h-2 w-full" />
-                  <CardHeader>
-                    <div className="flex items-center gap-2 text-primary mb-2">
-                      <CheckCircle2 className="w-5 h-5" />
-                      <span className="text-xs font-bold uppercase tracking-wider">Extração Finalizada</span>
-                    </div>
-                    <CardTitle className="text-xl">Otimizado para o Help Desk</CardTitle>
-                  </CardHeader>
-                  <CardContent className="space-y-6">
-                    <div className="grid gap-4 md:grid-cols-2">
-                      <div className="space-y-1">
-                        <Label className="text-[10px] uppercase text-muted-foreground font-bold">Título do Chamado</Label>
-                        <div className="p-3 bg-white rounded-md border text-sm font-medium border-primary/10">{result.title}</div>
-                      </div>
-                      <div className="space-y-1">
-                        <Label className="text-[10px] uppercase text-muted-foreground font-bold">Relato (Usuário)</Label>
-                        <div className="p-3 bg-white rounded-md border text-sm border-primary/10">{result.description}</div>
-                      </div>
-                    </div>
-                    <div className="space-y-1">
-                      <Label className="text-[10px] uppercase text-muted-foreground font-bold">Resolução Técnica</Label>
-                      <div className="p-3 bg-white rounded-md border text-sm italic border-primary/10">{result.resolution}</div>
-                    </div>
-                    <div className="flex gap-4 pt-4">
-                      <Button className="flex-1 gap-2 h-12 shadow-lg" variant="default" onClick={handleSave}><CheckCircle2 className="w-4 h-4" /> Finalizar Registro</Button>
-                      <Button className="flex-1 gap-2 h-12 bg-secondary text-secondary-foreground" onClick={() => { navigator.clipboard.writeText(`Título: ${result.title}\n\nDescrição: ${result.description}\n\nResolução: ${result.resolution}`); toast({title: "Copiado"}); }}><Copy className="w-4 h-4" /> Copiar Dados</Button>
-                    </div>
-                  </CardContent>
-                </Card>
+        
+        <main className="flex-1 overflow-hidden flex flex-col p-6">
+          <Card className="border-none shadow-xl flex-1 flex flex-col overflow-hidden bg-white/50 backdrop-blur-sm">
+            <ScrollArea className="flex-1 w-full">
+              <div className="min-w-[1200px]">
+                <Table>
+                  <TableHeader className="bg-muted/50 sticky top-0 z-10">
+                    <TableRow className="hover:bg-transparent border-b">
+                      <TableHead className="w-[180px] text-[10px] font-bold uppercase tracking-wider">Unidade</TableHead>
+                      <TableHead className="w-[150px] text-[10px] font-bold uppercase tracking-wider">Setor</TableHead>
+                      <TableHead className="w-[180px] text-[10px] font-bold uppercase tracking-wider">Categoria</TableHead>
+                      <TableHead className="w-[180px] text-[10px] font-bold uppercase tracking-wider">Subcategoria</TableHead>
+                      <TableHead className="w-[180px] text-[10px] font-bold uppercase tracking-wider">Atividade / Item</TableHead>
+                      <TableHead className="flex-1 text-[10px] font-bold uppercase tracking-wider">Informação Livre</TableHead>
+                      <TableHead className="w-[250px] text-[10px] font-bold uppercase tracking-wider">Resolução Técnica</TableHead>
+                      <TableHead className="w-[80px] text-center text-[10px] font-bold uppercase tracking-wider">Ação</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {rows.map((row, index) => (
+                      <DemandRow 
+                        key={row.id} 
+                        row={row} 
+                        units={activeUnits} 
+                        categories={activeCategories}
+                        onUpdate={(updates) => updateRow(row.id, updates)}
+                        onSave={() => handleSaveRow(row)}
+                        isLast={index === rows.length - 1}
+                      />
+                    ))}
+                  </TableBody>
+                </Table>
               </div>
-            )}
+              <ScrollBar orientation="horizontal" />
+            </ScrollArea>
+          </Card>
+          
+          <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground px-2">
+            <div className="flex gap-4">
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-primary" /> Atendimento Ativo</span>
+              <span className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-accent" /> Registrado no Sistema</span>
+            </div>
+            <p>Pressione <kbd className="bg-muted px-1 rounded border">Save</kbd> para instanciar a próxima linha.</p>
           </div>
         </main>
       </SidebarInset>
     </div>
+  )
+}
+
+function DemandRow({ row, units, categories, onUpdate, onSave, isLast }: { 
+  row: RowData, 
+  units: any[], 
+  categories: any[], 
+  onUpdate: (u: Partial<RowData>) => void,
+  onSave: () => void,
+  isLast: boolean
+}) {
+  const currentUnit = useMemo(() => units.find(u => u.name === row.unitName), [units, row.unitName]);
+  const currentCategory = useMemo(() => categories.find(c => c.name === row.categoryName), [categories, row.categoryName]);
+  const currentSubcategories = useMemo(() => normalizeSubs(currentCategory?.subcategories), [currentCategory]);
+  const currentSub = useMemo(() => currentSubcategories.find(s => s.name === row.subName), [currentSubcategories, row.subName]);
+
+  return (
+    <TableRow className={cn(
+      "transition-colors group",
+      row.isSaved ? "bg-accent/5 opacity-60" : "bg-white",
+      isLast && !row.isSaved && "border-l-4 border-l-primary"
+    )}>
+      {/* Unidade */}
+      <TableCell className="p-2">
+        <Select value={row.unitName} onValueChange={(val) => onUpdate({ unitName: val, sector: "" })} disabled={row.isSaved}>
+          <SelectTrigger className="border-none shadow-none bg-transparent focus:ring-0 h-8 text-xs">
+            <SelectValue placeholder="Unidade" />
+          </SelectTrigger>
+          <SelectContent>
+            {units.map(u => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
+      {/* Setor */}
+      <TableCell className="p-2">
+        <Select value={row.sector} onValueChange={(val) => onUpdate({ sector: val })} disabled={!row.unitName || row.isSaved}>
+          <SelectTrigger className="border-none shadow-none bg-transparent focus:ring-0 h-8 text-xs">
+            <SelectValue placeholder="Setor" />
+          </SelectTrigger>
+          <SelectContent>
+            {currentUnit?.sectors?.map((s: string) => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
+      {/* Categoria */}
+      <TableCell className="p-2">
+        <Select value={row.categoryName} onValueChange={(val) => onUpdate({ categoryName: val, subName: "", itemName: "" })} disabled={row.isSaved}>
+          <SelectTrigger className="border-none shadow-none bg-transparent focus:ring-0 h-8 text-xs">
+            <SelectValue placeholder="Categoria" />
+          </SelectTrigger>
+          <SelectContent>
+            {categories.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
+      {/* Subcategoria */}
+      <TableCell className="p-2">
+        <Select value={row.subName} onValueChange={(val) => onUpdate({ subName: val, itemName: "" })} disabled={!row.categoryName || row.isSaved}>
+          <SelectTrigger className="border-none shadow-none bg-transparent focus:ring-0 h-8 text-xs">
+            <SelectValue placeholder="Sub" />
+          </SelectTrigger>
+          <SelectContent>
+            {currentSubcategories.map(s => <SelectItem key={s.name} value={s.name}>{s.name}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
+      {/* Item */}
+      <TableCell className="p-2">
+        <Select value={row.itemName} onValueChange={(val) => onUpdate({ itemName: val })} disabled={!row.subName || row.isSaved}>
+          <SelectTrigger className="border-none shadow-none bg-transparent focus:ring-0 h-8 text-xs">
+            <SelectValue placeholder="Item" />
+          </SelectTrigger>
+          <SelectContent>
+            {currentSub?.items?.map((item: string) => <SelectItem key={item} value={item}>{item}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </TableCell>
+
+      {/* Informação Livre */}
+      <TableCell className="p-2">
+        <Input 
+          placeholder="O que o usuário relatou?" 
+          className="border-none shadow-none bg-transparent focus-visible:ring-0 h-8 text-xs italic"
+          value={row.freeText}
+          onChange={(e) => onUpdate({ freeText: e.target.value })}
+          disabled={row.isSaved}
+        />
+      </TableCell>
+
+      {/* Resolução */}
+      <TableCell className="p-2">
+        <Input 
+          placeholder="Qual foi a solução?" 
+          className="border-none shadow-none bg-transparent focus-visible:ring-0 h-8 text-xs"
+          value={row.details}
+          onChange={(e) => onUpdate({ details: e.target.value })}
+          disabled={row.isSaved}
+        />
+      </TableCell>
+
+      {/* Ações */}
+      <TableCell className="p-2 text-center">
+        {row.isProcessing ? (
+          <Loader2 className="w-5 h-5 animate-spin text-primary mx-auto" />
+        ) : row.isSaved ? (
+          <CheckCircle2 className="w-5 h-5 text-accent mx-auto" />
+        ) : (
+          <Button 
+            size="icon" 
+            variant="ghost" 
+            className="h-8 w-8 text-primary hover:bg-primary/10" 
+            onClick={onSave}
+          >
+            <Save className="w-4 h-4" />
+          </Button>
+        )}
+      </TableCell>
+    </TableRow>
   )
 }
