@@ -10,7 +10,7 @@ import { Button } from "@/components/ui/button"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Badge } from "@/components/ui/badge"
-import { Plus, Trash2, Building2, Tags, RotateCcw, X, Pencil, Loader2, ChevronRight, ListPlus, ShieldAlert, Globe, DatabaseZap } from "lucide-react"
+import { Plus, Trash2, Building2, Tags, RotateCcw, X, Pencil, Loader2, ChevronRight, ListPlus, ShieldAlert, Globe, DatabaseZap, Check } from "lucide-react"
 import { useState, useMemo } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
@@ -33,6 +33,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+import { cn } from "@/lib/utils"
 
 // Helper para normalizar subcategorias
 const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
@@ -82,6 +83,10 @@ export default function SettingsPage() {
   const [editTempSector, setEditTempSector] = useState("")
   const [itemToDelete, setItemToDelete] = useState<{type: 'categories' | 'units', id: string} | null>(null)
 
+  // Estado para edição de nome de subcategoria
+  const [subEditIndex, setSubEditIndex] = useState<number | null>(null)
+  const [subEditValue, setSubEditValue] = useState("")
+
   if (!isUserLoading && !isAdmin) {
     return (
       <div className="flex h-screen bg-background">
@@ -108,10 +113,12 @@ export default function SettingsPage() {
   }
 
   const handleUpdateCategory = () => {
-    if (!editingCategory || !editCatName.trim() || !db) return;
-    const docRef = doc(db, "categories", editingCategory.id);
+    if (!editCatName.trim() || !db) return;
+    const id = editingCategory?.id || Math.random().toString(36).substr(2, 9);
+    const docRef = doc(db, "categories", id);
     updateDocumentNonBlocking(docRef, { name: editCatName.trim(), subcategories: editCatSubs });
     setEditingCategory(null);
+    setSubEditIndex(null);
     toast({ title: "Sucesso", description: "Categoria global atualizada." });
   }
 
@@ -125,8 +132,9 @@ export default function SettingsPage() {
   }
 
   const handleUpdateUnit = () => {
-    if (!editingUnit || !editUnitName.trim() || !db) return;
-    const docRef = doc(db, "units", editingUnit.id);
+    if (!editUnitName.trim() || !db) return;
+    const id = editingUnit?.id || Math.random().toString(36).substr(2, 9);
+    const docRef = doc(db, "units", id);
     updateDocumentNonBlocking(docRef, { name: editUnitName.trim(), sectors: editUnitSectors });
     setEditingUnit(null);
     toast({ title: "Sucesso", description: "Unidade global atualizada." });
@@ -137,6 +145,29 @@ export default function SettingsPage() {
     const docRef = doc(db, type, id);
     updateDocumentNonBlocking(docRef, { active });
     setItemToDelete(null);
+  }
+
+  const startRenameSub = (e: React.MouseEvent, index: number, name: string) => {
+    e.stopPropagation();
+    setSubEditIndex(index);
+    setSubEditValue(name);
+  }
+
+  const saveRenameSub = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    if (subEditValue.trim()) {
+      const updated = [...editCatSubs];
+      updated[index].name = subEditValue.trim();
+      setEditCatSubs(updated);
+    }
+    setSubEditIndex(null);
+  }
+
+  const removeSub = (e: React.MouseEvent, index: number) => {
+    e.stopPropagation();
+    setEditCatSubs(editCatSubs.filter((_, i) => i !== index));
+    if (activeSubForItems === index) setActiveSubForItems(null);
+    else if (activeSubForItems !== null && activeSubForItems > index) setActiveSubForItems(activeSubForItems - 1);
   }
 
   return (
@@ -193,7 +224,7 @@ export default function SettingsPage() {
                       {isCatLoading ? <div className="flex justify-center py-10"><Loader2 className="animate-spin text-primary" /></div> : categories.filter(c => c.active).length === 0 ? (
                         <p className="text-center py-10 text-muted-foreground text-sm">Nenhuma categoria cadastrada.</p>
                       ) : categories.filter(c => c.active).map(cat => (
-                        <div key={cat.id} className="p-3 border rounded-md mb-2 flex justify-between items-center hover:bg-accent/5">
+                        <div key={cat.id} className="p-3 border rounded-md mb-2 flex justify-between items-center hover:bg-accent/5 transition-colors">
                           <div>
                             <div className="font-bold">{cat.name}</div>
                             <div className="text-[10px] text-muted-foreground">
@@ -285,7 +316,7 @@ export default function SettingsPage() {
             </TabsContent>
           </Tabs>
 
-          <Dialog open={!!editingCategory} onOpenChange={() => { setEditingCategory(null); setActiveSubForItems(null); }}>
+          <Dialog open={!!editingCategory} onOpenChange={() => { setEditingCategory(null); setActiveSubForItems(null); setSubEditIndex(null); }}>
             <DialogContent className="max-w-2xl">
               <DialogHeader><DialogTitle>Editar Categoria Global</DialogTitle></DialogHeader>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6 py-4">
@@ -302,11 +333,38 @@ export default function SettingsPage() {
                     </div>
                     <ScrollArea className="h-[250px] pr-2">
                       {editCatSubs.map((sub, i) => (
-                        <div key={i} className={`flex items-center justify-between p-2 rounded-md mb-1 cursor-pointer transition-colors ${activeSubForItems === i ? 'bg-primary/10 border-primary' : 'bg-muted/50 border-transparent'} border`} onClick={() => setActiveSubForItems(i)}>
-                          <span className="text-sm font-medium">{sub.name}</span>
-                          <div className="flex items-center gap-1">
-                            <Badge variant="outline" className="text-[10px]">{sub.items?.length || 0}</Badge>
-                            <ChevronRight className="w-4 h-4" />
+                        <div key={i} className={cn(
+                          "group flex items-center justify-between p-2 rounded-md mb-1 cursor-pointer transition-all border",
+                          activeSubForItems === i ? 'bg-primary/10 border-primary shadow-sm' : 'bg-muted/50 border-transparent hover:bg-accent/10'
+                        )} onClick={() => setActiveSubForItems(i)}>
+                          <div className="flex-1 min-w-0 mr-2">
+                            {subEditIndex === i ? (
+                              <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+                                <Input 
+                                  size={1}
+                                  className="h-7 text-xs py-0 px-2"
+                                  autoFocus
+                                  value={subEditValue}
+                                  onChange={(e) => setSubEditValue(e.target.value)}
+                                  onKeyDown={(e) => { if(e.key === 'Enter') saveRenameSub(e as any, i); if(e.key === 'Escape') setSubEditIndex(null); }}
+                                />
+                                <Button size="icon" variant="ghost" className="h-7 w-7 text-primary" onClick={(e) => saveRenameSub(e, i)}><Check className="w-3 h-3" /></Button>
+                              </div>
+                            ) : (
+                              <span className="text-sm font-medium truncate block">{sub.name}</span>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                            {subEditIndex !== i && (
+                              <Button variant="ghost" size="icon" className="h-6 w-6" onClick={(e) => startRenameSub(e, i, sub.name)}>
+                                <Pencil className="w-3 h-3" />
+                              </Button>
+                            )}
+                            <Button variant="ghost" size="icon" className="h-6 w-6 text-destructive" onClick={(e) => removeSub(e, i)}>
+                              <Trash2 className="w-3 h-3" />
+                            </Button>
+                            <Badge variant="outline" className="text-[10px] ml-1">{sub.items?.length || 0}</Badge>
+                            <ChevronRight className="w-4 h-4 ml-1" />
                           </div>
                         </div>
                       ))}
