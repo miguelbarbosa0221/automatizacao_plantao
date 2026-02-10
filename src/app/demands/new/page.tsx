@@ -10,14 +10,16 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
-import { useState, useMemo, useCallback } from "react"
+import { useState, useMemo, useCallback, useEffect } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
-import { Loader2, Zap, Keyboard, ClipboardCheck, Trash2 } from "lucide-react"
+import { Loader2, Zap, Keyboard, ClipboardCheck, Trash2, Save } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc, writeBatch } from "firebase/firestore"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+
+const STORAGE_KEY = "plantao_ai_draft_rows";
 
 // Helper para normalizar subcategorias
 const normalizeSubs = (subs: any[]): {name: string, items: string[]}[] => {
@@ -76,6 +78,30 @@ export default function HighPerformanceRegistryPage() {
   ]);
 
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [isLoadedFromDraft, setIsLoadedFromDraft] = useState(false);
+
+  // Carrega rascunho do localStorage no mount
+  useEffect(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRows(parsed);
+          setIsLoadedFromDraft(true);
+        }
+      } catch (e) {
+        console.error("Erro ao carregar rascunho", e);
+      }
+    }
+  }, []);
+
+  // Salva rascunho automaticamente a cada mudança nas linhas
+  useEffect(() => {
+    if (rows.length > 0) {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(rows));
+    }
+  }, [rows]);
 
   const updateRow = useCallback((id: string, updates: Partial<RowData>) => {
     setRows(prev => {
@@ -117,7 +143,6 @@ export default function HighPerformanceRegistryPage() {
   };
 
   const handleBatchSave = async () => {
-    // Filtra apenas linhas que tenham o mínimo de informação para serem salvas
     const rowsToSave = rows.filter(r => r.unitName && r.categoryName && (r.freeText || r.details));
 
     if (rowsToSave.length === 0) {
@@ -135,7 +160,6 @@ export default function HighPerformanceRegistryPage() {
     const batch = writeBatch(db);
 
     try {
-      // Processa todas as demandas em paralelo via IA
       const savePromises = rowsToSave.map(async (row) => {
         const textToProcess = `
           LOCALIZAÇÃO: Unidade ${row.unitName}, Setor ${row.sector}
@@ -167,12 +191,14 @@ export default function HighPerformanceRegistryPage() {
 
       const processedResults = await Promise.all(savePromises);
       
-      // Adiciona todas ao batch do Firestore
       processedResults.forEach(res => {
         batch.set(res.ref, res.data);
       });
 
       await batch.commit();
+
+      // Limpa rascunho após sucesso
+      localStorage.removeItem(STORAGE_KEY);
 
       toast({ 
         title: "Plantão Finalizado", 
@@ -203,8 +229,13 @@ export default function HighPerformanceRegistryPage() {
             <h1 className="text-lg font-semibold font-headline">Plantão de Alta Performance</h1>
           </div>
           <div className="ml-auto flex items-center gap-3">
+            {isLoadedFromDraft && (
+              <Badge variant="outline" className="text-[10px] border-accent text-accent animate-in fade-in zoom-in duration-500 gap-1">
+                <Save className="w-3 h-3" /> Rascunho Restaurado
+              </Badge>
+            )}
             <Badge variant="outline" className="hidden sm:flex bg-primary/5 text-primary border-primary/20 gap-1">
-              <Keyboard className="w-3 h-3" /> Modo Planilha Ativo
+              <Keyboard className="w-3 h-3" /> Auto-Save Ativo
             </Badge>
             <Button 
               onClick={handleBatchSave} 
@@ -259,8 +290,8 @@ export default function HighPerformanceRegistryPage() {
           
           <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground font-medium px-2">
             <p className="flex items-center gap-1">
-              <Zap className="w-3 h-3" /> 
-              As demandas são salvas em lote. Preencha as linhas e clique em "Finalizar Plantão" para processar tudo via IA.
+              <Save className="w-3 h-3 text-primary" /> 
+              O sistema salva rascunhos automaticamente em tempo real. Você pode trocar de página ou fechar o navegador sem perder os dados.
             </p>
             <div className="flex gap-4">
               <span className="flex items-center gap-1.5"><div className="w-2 h-2 rounded-full bg-primary" /> Editando</span>
