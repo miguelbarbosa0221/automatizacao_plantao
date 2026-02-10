@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
-import { useState, useMemo } from "react"
+import { useState, useMemo, useEffect } from "react"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
 import { Loader2, CheckCircle2, Save, Zap, Keyboard } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
@@ -62,10 +62,10 @@ export default function HighPerformanceRegistryPage() {
   const activeCategories = useMemo(() => (categoriesData || []).filter(c => c.active), [categoriesData]);
   const activeUnits = useMemo(() => (unitsData || []).filter(u => u.active), [unitsData]);
 
-  // Estado das linhas do Grid
+  // Estado das linhas do Grid - ID inicial estável para evitar erro de hidratação
   const [rows, setRows] = useState<RowData[]>([
     { 
-      id: Math.random().toString(36).substr(2, 9), 
+      id: "initial-row-id", 
       unitName: "", 
       sector: "", 
       categoryName: "", 
@@ -88,6 +88,11 @@ export default function HighPerformanceRegistryPage() {
       return;
     }
 
+    if (!user || !db) {
+      toast({ title: "Erro de Sessão", description: "Aguarde a validação do usuário.", variant: "destructive" });
+      return;
+    }
+
     if (row.isSaved || row.isProcessing) return;
 
     updateRow(row.id, { isProcessing: true });
@@ -104,11 +109,13 @@ export default function HighPerformanceRegistryPage() {
 
       const aiResult = await processFreeTextDemandWithGemini({ freeText: textToProcess });
       
-      const demandRef = doc(db!, "users", user!.uid, "demands", row.id);
+      // Gera ID real apenas no momento da gravação se for o ID estável inicial
+      const targetId = row.id === "initial-row-id" ? Math.random().toString(36).substr(2, 9) : row.id;
+      const demandRef = doc(db, "users", user.uid, "demands", targetId);
       
       const newDemand = {
         ...aiResult,
-        id: row.id,
+        id: targetId,
         timestamp: new Date().toISOString(),
         source: 'structured',
         category: row.categoryName,
@@ -338,4 +345,3 @@ function DemandGridRow({ row, units, categories, onUpdate, onSave, isLast }: {
     </TableRow>
   )
 }
-
