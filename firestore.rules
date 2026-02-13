@@ -10,22 +10,23 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Função de verificação de membro ultra-resiliente
+    // Verifica se o usuário é membro da empresa consultando o perfil
     function isMemberOf(companyId) {
-      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc).data;
-      return isSignedIn() && profile != null && 
-             (profile.activeCompanyId == companyId || 
-              (profile.companies != null && profile.companies.filter(c => c.id == companyId).size() > 0));
+      let profilePath = /databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc;
+      return isSignedIn() && exists(profilePath) && 
+             (get(profilePath).data.activeCompanyId == companyId || 
+              (get(profilePath).data.companies != null && get(profilePath).data.companies.filter(c => c.id == companyId).size() > 0));
     }
 
-    // Função de verificação de administrador ultra-resiliente
+    // Verifica se o usuário é administrador da empresa consultando o perfil
     function isAdminOf(companyId) {
-      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc).data;
-      return isSignedIn() && profile != null && profile.companies != null && 
-             profile.companies.filter(c => c.id == companyId && c.role == 'admin').size() > 0;
+      let profilePath = /databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc;
+      return isSignedIn() && exists(profilePath) && 
+             get(profilePath).data.companies != null && 
+             get(profilePath).data.companies.filter(c => c.id == companyId && c.role == 'admin').size() > 0;
     }
 
-    // Perfil do Usuário: Dono tem acesso total e regras claras
+    // Perfil do Usuário
     match /users/{userId} {
       allow read, write: if isOwner(userId);
       
@@ -38,11 +39,11 @@ service cloud.firestore {
       }
     }
 
-    // Dados da Empresa: Proteção por hierarquia e participação
+    // Dados da Empresa
     match /companies/{companyId} {
       allow read: if isSignedIn() && isMemberOf(companyId);
-      // Apenas administradores podem modificar a raiz da empresa ou configurações
-      allow write: if isSignedIn() && isAdminOf(companyId);
+      allow create: if isSignedIn(); // Permite criar a empresa inicial
+      allow update, delete: if isSignedIn() && isAdminOf(companyId);
 
       match /categories/{categoryId} {
         allow read: if isSignedIn() && isMemberOf(companyId);

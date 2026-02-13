@@ -23,7 +23,6 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted || isUserLoading) return;
 
-    // Redirecionamento de login
     if (!user && pathname !== '/login') {
       router.push('/login');
       return;
@@ -34,36 +33,32 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // Lógica de reparo/criação de perfil para Multi-Tenant
+    // Lógica de Reparo de Perfil: Garante que o usuário tenha uma empresa e seja Admin
     if (user && db && !isInitializingProfile) {
-      const hasValidProfile = profile && 
-                            profile.companies && 
-                            profile.companies.length > 0 &&
-                            profile.activeCompanyId &&
-                            isAdmin;
+      const needsRepair = !profile || !profile.activeCompanyId || !isAdmin;
 
-      if (!hasValidProfile) {
+      if (needsRepair) {
         setIsInitializingProfile(true);
         const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
         
-        // ID estável baseado no UID para evitar orfandade de dados
+        // ID estável para evitar criação de múltiplas empresas órfãs
         const stableCompanyId = `org-${user.uid.substring(0, 10)}`;
         const companyRef = doc(db, 'companies', stableCompanyId);
         const batch = writeBatch(db);
         
-        // Garante que a empresa exista
+        // 1. Garante a existência da empresa (allow create se assinado)
         batch.set(companyRef, {
           id: stableCompanyId,
           name: 'Minha Organização Principal',
           active: true,
-          createdAt: new Date().toISOString()
+          updatedAt: new Date().toISOString()
         }, { merge: true });
 
-        // Garante que o perfil aponte para esta empresa como ADMIN (Papel miguel220095@gmail.com)
+        // 2. Garante que o perfil aponte para esta empresa como ADMIN
         batch.set(profileRef, {
           uid: user.uid,
-          email: user.email || 'usuario@plantaoai.local',
-          displayName: user.displayName || user.email?.split('@')[0] || 'Plantonista',
+          email: user.email,
+          displayName: user.displayName || user.email?.split('@')[0],
           activeCompanyId: stableCompanyId,
           companies: [
             { id: stableCompanyId, name: 'Minha Organização Principal', role: 'admin' }
@@ -73,11 +68,10 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
 
         batch.commit()
           .then(() => {
-            console.log("Perfil normalizado com sucesso para Admin.");
             setIsInitializingProfile(false);
           })
           .catch(err => {
-            console.error("Erro crítico ao inicializar perfil:", err);
+            console.error("Erro crítico na inicialização do perfil:", err);
             setIsInitializingProfile(false);
           });
       }
@@ -86,14 +80,14 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
 
   if (!isMounted) return null;
 
-  // Mostra loader se o usuário está logado mas o perfil está sendo normalizado
+  // Bloqueia o acesso até que o perfil de administrador esteja 100% pronto
   if (user && (isUserLoading || isInitializingProfile || !profile || !isAdmin)) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground font-medium">
-            Garantindo acesso de administrador...
+            Sincronizando acesso organizacional...
           </p>
         </div>
       </div>
