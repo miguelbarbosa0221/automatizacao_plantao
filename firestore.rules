@@ -10,23 +10,22 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Função simplificada para verificar se o usuário é membro de uma empresa
-    // Acessa diretamente o perfil do usuário logado
+    // Função de verificação de membro ultra-resiliente
     function isMemberOf(companyId) {
       let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc).data;
       return isSignedIn() && profile != null && 
              (profile.activeCompanyId == companyId || 
-              profile.companies.filter(c => c.id == companyId).size() > 0);
+              (profile.companies != null && profile.companies.filter(c => c.id == companyId).size() > 0));
     }
 
-    // Função simplificada para verificar se o usuário é administrador de uma empresa
+    // Função de verificação de administrador ultra-resiliente
     function isAdminOf(companyId) {
       let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc).data;
-      let companyEntry = profile.companies.filter(c => c.id == companyId);
-      return isSignedIn() && companyEntry.size() > 0 && companyEntry[0].role == 'admin';
+      return isSignedIn() && profile != null && profile.companies != null && 
+             profile.companies.filter(c => c.id == companyId && c.role == 'admin').size() > 0;
     }
 
-    // Perfil do Usuário: Dono tem acesso total
+    // Perfil do Usuário: Dono tem acesso total e regras claras
     match /users/{userId} {
       allow read, write: if isOwner(userId);
       
@@ -39,11 +38,10 @@ service cloud.firestore {
       }
     }
 
-    // Dados da Empresa: Protegido por participação e papel
+    // Dados da Empresa: Proteção por hierarquia e participação
     match /companies/{companyId} {
-      // Permite leitura se for membro
       allow read: if isSignedIn() && isMemberOf(companyId);
-      // Permite escrita se for administrador
+      // Apenas administradores podem modificar a raiz da empresa ou configurações
       allow write: if isSignedIn() && isAdminOf(companyId);
 
       match /categories/{categoryId} {
@@ -59,7 +57,7 @@ service cloud.firestore {
       match /demands/{demandId} {
         allow read: if isSignedIn() && isMemberOf(companyId);
         allow create: if isSignedIn() && isMemberOf(companyId);
-        allow update, delete: if isSignedIn() && isMemberOf(companyId) && (resource.data.userId == request.auth.uid || isAdminOf(companyId));
+        allow update, delete: if isSignedIn() && (isAdminOf(companyId) || (isMemberOf(companyId) && resource.data.userId == request.auth.uid));
       }
     }
 

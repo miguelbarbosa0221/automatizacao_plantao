@@ -82,17 +82,18 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
                 userError: null,
               });
             } else {
-              // Se o perfil não existe fisicamente, liberamos para o AuthInitializer criar
               setAuthState(prev => ({
                 ...prev,
                 user: firebaseUser,
                 profile: null,
+                isAdmin: false,
+                activeCompanyId: null,
                 isUserLoading: false,
                 userError: null
               }));
             }
           }, (err) => {
-             // Em caso de erro (ex: permissão), liberamos para o inicializador tentar reparar
+             console.error("Erro ao carregar perfil:", err);
              setAuthState(prev => ({
                ...prev,
                user: firebaseUser,
