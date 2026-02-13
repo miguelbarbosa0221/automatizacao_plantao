@@ -20,12 +20,14 @@ export default function HistoryPage() {
   const { user, activeCompanyId } = useUser()
 
   const demandsQuery = useMemoFirebase(() => {
-    if (!db || !activeCompanyId) return null;
+    // Proteção: Só executa se houver banco de dados, usuário e uma empresa ativa selecionada
+    if (!db || !user?.uid || !activeCompanyId) return null;
+    
     return query(
       collection(db, "companies", activeCompanyId, "demands"),
       orderBy("timestamp", "desc")
     );
-  }, [db, activeCompanyId]);
+  }, [db, user?.uid, activeCompanyId]);
 
   const { data: demands, isLoading } = useCollection(demandsQuery);
 
@@ -68,6 +70,10 @@ export default function HistoryPage() {
             {isLoading ? (
               <div className="flex justify-center py-20">
                 <Loader2 className="animate-spin text-primary h-8 w-8" />
+              </div>
+            ) : !activeCompanyId ? (
+              <div className="text-center py-20 text-muted-foreground">
+                Selecione uma empresa para visualizar o histórico.
               </div>
             ) : filteredDemands.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
