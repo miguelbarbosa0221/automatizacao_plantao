@@ -16,17 +16,14 @@ service cloud.firestore {
 
     function isMemberOf(companyId) {
       let profile = getProfile(request.auth.uid);
-      return isSignedIn() && profile.companies.hasAny([{'id': companyId, 'role': 'admin', 'name': profile.companies[0].name}, {'id': companyId, 'role': 'user', 'name': profile.companies[0].name}]);
-    }
-
-    function getRoleInCompany(companyId) {
-      let profile = getProfile(request.auth.uid);
-      // Lógica simplificada: itera sobre a lista de empresas
-      return profile.companies.filter(c => c.id == companyId)[0].role;
+      // Verifica se o ID da empresa está na lista de empresas do perfil
+      return isSignedIn() && profile.companies.filter(c => c.id == companyId).size() > 0;
     }
 
     function isAdminOf(companyId) {
-      return isSignedIn() && getRoleInCompany(companyId) == 'admin';
+      let profile = getProfile(request.auth.uid);
+      let companyEntry = profile.companies.filter(c => c.id == companyId);
+      return isSignedIn() && companyEntry.size() > 0 && companyEntry[0].role == 'admin';
     }
 
     // Perfil do Usuário

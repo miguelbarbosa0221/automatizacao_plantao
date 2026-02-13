@@ -30,33 +30,39 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       router.push('/');
     }
 
-    if (user && db && !profile && !isUserLoading) {
+    // Lógica de reparo/criação de perfil para Multi-Tenant
+    if (user && db && !isUserLoading) {
       const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
+      
       getDoc(profileRef).then((snap) => {
-        if (!snap.exists()) {
+        const data = snap.data();
+        
+        // Se o perfil não existe ou não tem a lista de empresas (antigo)
+        if (!snap.exists() || !data?.companies || data.companies.length === 0) {
           const batch = writeBatch(db);
           
-          // Criação da empresa padrão para o novo usuário
-          const companyId = Math.random().toString(36).substr(2, 9);
+          const companyId = data?.activeCompanyId || Math.random().toString(36).substr(2, 9);
           const companyRef = doc(db, 'companies', companyId);
           
+          // Garante que a empresa exista
           batch.set(companyRef, {
             id: companyId,
-            name: 'Minha Empresa',
+            name: 'Minha Organização',
             active: true,
-            createdAt: new Date().toISOString()
-          });
+            createdAt: data?.createdAt || new Date().toISOString()
+          }, { merge: true });
 
+          // Atualiza ou cria o perfil com a nova estrutura de vínculos
           batch.set(profileRef, {
             uid: user.uid,
             email: user.email || 'usuario@plantaoai.local',
             displayName: user.displayName || user.email?.split('@')[0] || 'Plantonista',
             activeCompanyId: companyId,
             companies: [
-              { id: companyId, name: 'Minha Empresa', role: 'admin' }
+              { id: companyId, name: 'Minha Organização', role: 'admin' }
             ],
-            createdAt: new Date().toISOString()
-          });
+            updatedAt: new Date().toISOString()
+          }, { merge: true });
 
           batch.commit();
         }

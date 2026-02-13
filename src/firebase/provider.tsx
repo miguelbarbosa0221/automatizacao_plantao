@@ -65,18 +65,22 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           const profileRef = doc(firestore, 'users', firebaseUser.uid, 'profile', 'profileDoc');
           const unsubscribeProfile = onSnapshot(profileRef, (snap) => {
             const profileData = snap.data() || null;
-            const activeCoId = profileData?.activeCompanyId || (profileData?.companies?.[0]?.id) || null;
-            const currentRole = profileData?.companies?.find((c: any) => c.id === activeCoId)?.role;
+            
+            // Lógica robusta para determinar empresa ativa e papel
+            const activeCoId = profileData?.activeCompanyId || profileData?.companies?.[0]?.id || null;
+            const currentCompany = profileData?.companies?.find((c: any) => c.id === activeCoId);
+            const userIsAdmin = currentCompany?.role === 'admin';
 
             setAuthState({
               user: firebaseUser,
               profile: profileData,
-              isAdmin: currentRole === 'admin',
+              isAdmin: userIsAdmin,
               activeCompanyId: activeCoId,
               isUserLoading: false,
               userError: null,
             });
           }, (err) => {
+             console.error("Erro ao carregar perfil:", err);
              setAuthState(prev => ({ ...prev, user: firebaseUser, isUserLoading: false }));
           });
           return () => unsubscribeProfile();

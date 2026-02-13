@@ -14,18 +14,18 @@ import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 
 export default function Home() {
-  const { user, isAdmin, profile } = useUser();
+  const { user, isAdmin, profile, activeCompanyId } = useUser();
   const db = useFirestore();
   const { toast } = useToast();
 
   const demandsQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
+    if (!db || !activeCompanyId) return null;
     return query(
-      collection(db, "users", user.uid, "demands"),
+      collection(db, "companies", activeCompanyId, "demands"),
       orderBy("timestamp", "desc"),
       limit(50)
     );
-  }, [db, user]);
+  }, [db, activeCompanyId]);
 
   const { data: demands, isLoading } = useCollection(demandsQuery);
 
