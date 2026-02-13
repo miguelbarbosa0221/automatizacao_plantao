@@ -10,36 +10,55 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function getRole(userId) {
-      // O perfil é armazenado em /users/{userId}/profile/profileDoc
-      // Usamos path() para garantir a referência correta
-      return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data.role;
+    function getProfile(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data;
     }
 
-    function isAdmin(userId) {
-      return isSignedIn() && (getRole(userId) == 'admin');
+    function isMemberOf(companyId) {
+      let profile = getProfile(request.auth.uid);
+      return isSignedIn() && profile.companies.hasAny([{'id': companyId, 'role': 'admin', 'name': profile.companies[0].name}, {'id': companyId, 'role': 'user', 'name': profile.companies[0].name}]);
     }
 
-    // Coleções Privadas por Usuário
+    function getRoleInCompany(companyId) {
+      let profile = getProfile(request.auth.uid);
+      // Lógica simplificada: itera sobre a lista de empresas
+      return profile.companies.filter(c => c.id == companyId)[0].role;
+    }
+
+    function isAdminOf(companyId) {
+      return isSignedIn() && getRoleInCompany(companyId) == 'admin';
+    }
+
+    // Perfil do Usuário
     match /users/{userId} {
       allow get: if isOwner(userId);
       allow create: if isSignedIn();
       
-      // Permite que o dono do documento leia e escreva em QUALQUER subcoleção sua (necessário para migração)
       match /{allPaths=**} {
         allow read, write: if isOwner(userId);
       }
     }
 
-    // Coleções Globais da Organização (Root Collections)
-    match /categories/{categoryId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(request.auth.uid);
-    }
-    
-    match /units/{unitId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(request.auth.uid);
+    // Dados da Empresa
+    match /companies/{companyId} {
+      allow read: if isMemberOf(companyId);
+      allow write: if isAdminOf(companyId);
+
+      match /categories/{categoryId} {
+        allow read: if isMemberOf(companyId);
+        allow write: if isAdminOf(companyId);
+      }
+
+      match /units/{unitId} {
+        allow read: if isMemberOf(companyId);
+        allow write: if isAdminOf(companyId);
+      }
+
+      match /demands/{demandId} {
+        allow read: if isMemberOf(companyId);
+        allow create: if isMemberOf(companyId);
+        allow update, delete: if isMemberOf(companyId) && (resource.data.userId == request.auth.uid || isAdminOf(companyId));
+      }
     }
 
     match /{allPaths=**} {

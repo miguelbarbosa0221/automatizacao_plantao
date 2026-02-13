@@ -20,6 +20,7 @@ interface UserAuthState {
   isAdmin: boolean;
   isUserLoading: boolean;
   userError: Error | null;
+  activeCompanyId: string | null;
 }
 
 export interface FirebaseContextState extends UserAuthState {
@@ -51,6 +52,7 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
     isAdmin: false,
     isUserLoading: true,
     userError: null,
+    activeCompanyId: null,
   });
 
   useEffect(() => {
@@ -63,10 +65,14 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           const profileRef = doc(firestore, 'users', firebaseUser.uid, 'profile', 'profileDoc');
           const unsubscribeProfile = onSnapshot(profileRef, (snap) => {
             const profileData = snap.data() || null;
+            const activeCoId = profileData?.activeCompanyId || (profileData?.companies?.[0]?.id) || null;
+            const currentRole = profileData?.companies?.find((c: any) => c.id === activeCoId)?.role;
+
             setAuthState({
               user: firebaseUser,
               profile: profileData,
-              isAdmin: profileData?.role === 'admin',
+              isAdmin: currentRole === 'admin',
+              activeCompanyId: activeCoId,
               isUserLoading: false,
               userError: null,
             });
@@ -75,11 +81,11 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           });
           return () => unsubscribeProfile();
         } else {
-          setAuthState({ user: null, profile: null, isAdmin: false, isUserLoading: false, userError: null });
+          setAuthState({ user: null, profile: null, isAdmin: false, isUserLoading: false, userError: null, activeCompanyId: null });
         }
       },
       (error) => {
-        setAuthState({ user: null, profile: null, isAdmin: false, isUserLoading: false, userError: error });
+        setAuthState({ user: null, profile: null, isAdmin: false, isUserLoading: false, userError: error, activeCompanyId: null });
       }
     );
     return () => unsubscribeAuth();
@@ -117,6 +123,7 @@ export const useFirebase = (): FirebaseServicesAndUser => {
     user: context.user,
     profile: context.profile,
     isAdmin: context.isAdmin,
+    activeCompanyId: context.activeCompanyId,
     isUserLoading: context.isUserLoading,
     userError: context.userError,
   };
@@ -136,6 +143,6 @@ export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T | 
 }
 
 export const useUser = (): UserHookResult => {
-  const { user, profile, isAdmin, isUserLoading, userError } = useFirebase();
-  return { user, profile, isAdmin, isUserLoading, userError };
+  const { user, profile, isAdmin, activeCompanyId, isUserLoading, userError } = useFirebase();
+  return { user, profile, isAdmin, activeCompanyId, isUserLoading, userError };
 };

@@ -17,15 +17,15 @@ export default function HistoryPage() {
   const [search, setSearch] = useState("")
   const { toast } = useToast()
   const db = useFirestore()
-  const { user } = useUser()
+  const { user, activeCompanyId } = useUser()
 
   const demandsQuery = useMemoFirebase(() => {
-    if (!db || !user) return null;
+    if (!db || !activeCompanyId) return null;
     return query(
-      collection(db, "users", user.uid, "demands"),
+      collection(db, "companies", activeCompanyId, "demands"),
       orderBy("timestamp", "desc")
     );
-  }, [db, user]);
+  }, [db, activeCompanyId]);
 
   const { data: demands, isLoading } = useCollection(demandsQuery);
 
@@ -46,7 +46,7 @@ export default function HistoryPage() {
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <h1 className="text-lg font-semibold font-headline">Histórico de Atendimentos</h1>
+          <h1 className="text-lg font-semibold font-headline">Histórico da Organização</h1>
         </header>
         <main className="flex-1 overflow-auto p-6 space-y-6">
           <div className="flex items-center gap-4">
@@ -71,7 +71,7 @@ export default function HistoryPage() {
               </div>
             ) : filteredDemands.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
-                Nenhuma demanda encontrada no banco de dados.
+                Nenhuma demanda encontrada para esta empresa.
               </div>
             ) : (
               filteredDemands.map((demand) => (
@@ -82,7 +82,7 @@ export default function HistoryPage() {
                         {demand.source === 'free-text' ? 'Texto Livre' : 'Estruturado'}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(demand.timestamp).toLocaleDateString()} às {new Date(demand.timestamp).toLocaleTimeString()}
+                        {new Date(demand.timestamp).toLocaleDateString()}
                       </span>
                     </div>
                     <CardTitle className="text-lg">{demand.title}</CardTitle>
@@ -93,10 +93,7 @@ export default function HistoryPage() {
                       <p className="text-sm text-foreground line-clamp-2">{demand.description}</p>
                       <div className="flex justify-end gap-2 border-t pt-4">
                         <Button variant="ghost" size="sm" className="gap-2" onClick={() => copyToClipboard(demand)}>
-                          <Copy className="w-4 h-4" /> Copiar Help Desk
-                        </Button>
-                        <Button variant="outline" size="sm" className="gap-2">
-                          <ExternalLink className="w-4 h-4" /> Detalhes
+                          <Copy className="w-4 h-4" /> Copiar
                         </Button>
                       </div>
                     </div>
