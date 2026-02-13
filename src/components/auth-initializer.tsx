@@ -39,22 +39,23 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
         const data = snap.data();
         
         // Verifica se o perfil precisa de inicialização ou reparo
+        // Se snap não existe, ou se não tem empresas, ou se a empresa ativa não está na lista
         const needsRepair = !snap.exists() || 
                            !data?.companies || 
                            !Array.isArray(data.companies) || 
                            data.companies.length === 0 ||
-                           !data.companies.find((c: any) => c.role === 'admin');
+                           !data.activeCompanyId;
 
         if (needsRepair) {
           setIsInitializingProfile(true);
           const batch = writeBatch(db);
           
-          // Usa ID determinístico para a empresa inicial para evitar duplicação por refresh
-          const companyId = data?.activeCompanyId || `org-${user.uid.slice(0, 8)}`;
-          const companyRef = doc(db, 'companies', companyId);
+          // ID ESTÁVEL: Baseado no UID do usuário para evitar criação de múltiplas empresas aleatórias
+          const stableCompanyId = `org-${user.uid.substring(0, 10)}`;
+          const companyRef = doc(db, 'companies', stableCompanyId);
           
           batch.set(companyRef, {
-            id: companyId,
+            id: stableCompanyId,
             name: 'Minha Organização',
             active: true,
             createdAt: data?.createdAt || new Date().toISOString()
@@ -64,15 +65,17 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             uid: user.uid,
             email: user.email || 'usuario@plantaoai.local',
             displayName: user.displayName || user.email?.split('@')[0] || 'Plantonista',
-            activeCompanyId: companyId,
+            activeCompanyId: stableCompanyId,
             companies: [
-              { id: companyId, name: 'Minha Organização', role: 'admin' }
+              { id: stableCompanyId, name: 'Minha Organização', role: 'admin' }
             ],
             updatedAt: new Date().toISOString()
           }, { merge: true });
 
           batch.commit()
-            .then(() => setIsInitializingProfile(false))
+            .then(() => {
+              setIsInitializingProfile(false);
+            })
             .catch(err => {
               console.error("Erro ao inicializar perfil:", err);
               setIsInitializingProfile(false);
@@ -86,6 +89,8 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
     return null;
   }
 
+  // Se o usuário está logado mas o perfil está sendo reparado, bloqueamos a renderização
+  // Isso evita que useCollection tente ler coleções sem permissão
   if (isUserLoading || isInitializingProfile) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">

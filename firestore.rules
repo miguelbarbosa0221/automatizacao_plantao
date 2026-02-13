@@ -10,24 +10,20 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function getProfileData(userId) {
-      let path = /databases/$(database)/documents/users/$(userId)/profile/profileDoc;
-      return exists(path) ? get(path).data : null;
+    function getProfile(userId) {
+      return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data;
     }
 
     function isMemberOf(companyId) {
-      let data = getProfileData(request.auth.uid);
-      return isSignedIn() && data != null && 
-             data.keys().contains('companies') &&
-             data.companies is list &&
-             data.companies.filter(c => c.id == companyId).size() > 0;
+      let profile = getProfile(request.auth.uid);
+      return isSignedIn() && profile != null && 
+             profile.companies.filter(c => c.id == companyId).size() > 0;
     }
 
     function isAdminOf(companyId) {
-      let data = getProfileData(request.auth.uid);
-      if (!isSignedIn() || data == null || !data.keys().contains('companies') || !(data.companies is list)) return false;
-      let companyEntry = data.companies.filter(c => c.id == companyId);
-      return companyEntry.size() > 0 && companyEntry[0].role == 'admin';
+      let profile = getProfile(request.auth.uid);
+      let companyEntry = profile.companies.filter(c => c.id == companyId);
+      return isSignedIn() && companyEntry.size() > 0 && companyEntry[0].role == 'admin';
     }
 
     // Perfil do Usuário
@@ -35,6 +31,10 @@ service cloud.firestore {
       allow get: if isOwner(userId);
       allow create: if isSignedIn();
       
+      match /profile/profileDoc {
+        allow read, write: if isOwner(userId);
+      }
+
       match /{allPaths=**} {
         allow read, write: if isOwner(userId);
       }
@@ -43,24 +43,24 @@ service cloud.firestore {
     // Dados da Empresa
     match /companies/{companyId} {
       // Permite leitura se for membro
-      allow read: if isMemberOf(companyId);
+      allow read: if isSignedIn() && isMemberOf(companyId);
       // Permite escrita se for administrador
-      allow write: if isAdminOf(companyId);
+      allow write: if isSignedIn() && isAdminOf(companyId);
 
       match /categories/{categoryId} {
-        allow read: if isMemberOf(companyId);
-        allow write: if isAdminOf(companyId);
+        allow read: if isSignedIn() && isMemberOf(companyId);
+        allow write: if isSignedIn() && isAdminOf(companyId);
       }
 
       match /units/{unitId} {
-        allow read: if isMemberOf(companyId);
-        allow write: if isAdminOf(companyId);
+        allow read: if isSignedIn() && isMemberOf(companyId);
+        allow write: if isSignedIn() && isAdminOf(companyId);
       }
 
       match /demands/{demandId} {
-        allow read: if isMemberOf(companyId);
-        allow create: if isMemberOf(companyId);
-        allow update, delete: if isMemberOf(companyId) && (resource.data.userId == request.auth.uid || isAdminOf(companyId));
+        allow read: if isSignedIn() && isMemberOf(companyId);
+        allow create: if isSignedIn() && isMemberOf(companyId);
+        allow update, delete: if isSignedIn() && isMemberOf(companyId) && (resource.data.userId == request.auth.uid || isAdminOf(companyId));
       }
     }
 
