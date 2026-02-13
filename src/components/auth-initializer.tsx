@@ -14,6 +14,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
+  const [isInitializingProfile, setIsInitializingProfile] = useState(false);
 
   useEffect(() => {
     setIsMounted(true);
@@ -31,13 +32,13 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
     }
 
     // Lógica de reparo/criação de perfil para Multi-Tenant
-    if (user && db && !isUserLoading) {
+    if (user && db && !isUserLoading && !isInitializingProfile) {
       const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
       
       getDoc(profileRef).then((snap) => {
         const data = snap.data();
         
-        // Verifica se o perfil precisa de inicialização ou reparo de empresas ou se o papel está incorreto
+        // Verifica se o perfil precisa de inicialização ou reparo
         const needsRepair = !snap.exists() || 
                            !data?.companies || 
                            !Array.isArray(data.companies) || 
@@ -45,13 +46,13 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
                            !data.companies.find((c: any) => c.role === 'admin');
 
         if (needsRepair) {
+          setIsInitializingProfile(true);
           const batch = writeBatch(db);
           
-          // Usa ID existente ou gera um novo de forma estável
-          const companyId = data?.activeCompanyId || Math.random().toString(36).substr(2, 9);
+          // Usa ID determinístico para a empresa inicial para evitar duplicação por refresh
+          const companyId = data?.activeCompanyId || `org-${user.uid.slice(0, 8)}`;
           const companyRef = doc(db, 'companies', companyId);
           
-          // Garante que a empresa exista na coleção global
           batch.set(companyRef, {
             id: companyId,
             name: 'Minha Organização',
@@ -59,7 +60,6 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             createdAt: data?.createdAt || new Date().toISOString()
           }, { merge: true });
 
-          // Atualiza ou cria o perfil com o vínculo de Admin explicitamente
           batch.set(profileRef, {
             uid: user.uid,
             email: user.email || 'usuario@plantaoai.local',
@@ -71,24 +71,29 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             updatedAt: new Date().toISOString()
           }, { merge: true });
 
-          batch.commit().catch(err => {
-            console.error("Erro ao inicializar perfil:", err);
-          });
+          batch.commit()
+            .then(() => setIsInitializingProfile(false))
+            .catch(err => {
+              console.error("Erro ao inicializar perfil:", err);
+              setIsInitializingProfile(false);
+            });
         }
       });
     }
-  }, [user, isUserLoading, db, pathname, router, isMounted]);
+  }, [user, isUserLoading, db, pathname, router, isMounted, isInitializingProfile]);
 
   if (!isMounted) {
     return null;
   }
 
-  if (isUserLoading) {
+  if (isUserLoading || isInitializingProfile) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
-          <p className="text-sm text-muted-foreground">Validando sessão segura...</p>
+          <p className="text-sm text-muted-foreground">
+            {isInitializingProfile ? "Configurando seu ambiente..." : "Validando sessão segura..."}
+          </p>
         </div>
       </div>
     );

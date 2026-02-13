@@ -42,7 +42,9 @@ service cloud.firestore {
 
     // Dados da Empresa
     match /companies/{companyId} {
+      // Permite leitura se for membro
       allow read: if isMemberOf(companyId);
+      // Permite escrita se for administrador
       allow write: if isAdminOf(companyId);
 
       match /categories/{categoryId} {

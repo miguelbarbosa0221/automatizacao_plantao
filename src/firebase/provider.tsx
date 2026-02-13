@@ -66,11 +66,14 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           const unsubscribeProfile = onSnapshot(profileRef, (snap) => {
             const profileData = snap.data() || null;
             
-            // Determina empresa ativa com fallback seguro e validação de membro
+            if (!profileData) {
+              setAuthState(prev => ({ ...prev, user: firebaseUser, isUserLoading: false }));
+              return;
+            }
+
             const companies = profileData?.companies || [];
             let activeCoId = profileData?.activeCompanyId || (companies[0]?.id) || null;
             
-            // Verifica se o usuário realmente é membro da empresa ativa
             const currentCompany = companies.find((c: any) => c.id === activeCoId);
             const userIsAdmin = currentCompany?.role === 'admin';
 
