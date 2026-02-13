@@ -10,26 +10,25 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function getProfile(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data;
-    }
-
+    // Função simplificada para verificar se o usuário é membro de uma empresa
+    // Acessa diretamente o perfil do usuário logado
     function isMemberOf(companyId) {
-      let profile = getProfile(request.auth.uid);
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc).data;
       return isSignedIn() && profile != null && 
-             profile.companies.filter(c => c.id == companyId).size() > 0;
+             (profile.activeCompanyId == companyId || 
+              profile.companies.filter(c => c.id == companyId).size() > 0);
     }
 
+    // Função simplificada para verificar se o usuário é administrador de uma empresa
     function isAdminOf(companyId) {
-      let profile = getProfile(request.auth.uid);
+      let profile = get(/databases/$(database)/documents/users/$(request.auth.uid)/profile/profileDoc).data;
       let companyEntry = profile.companies.filter(c => c.id == companyId);
       return isSignedIn() && companyEntry.size() > 0 && companyEntry[0].role == 'admin';
     }
 
-    // Perfil do Usuário
+    // Perfil do Usuário: Dono tem acesso total
     match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow create: if isSignedIn();
+      allow read, write: if isOwner(userId);
       
       match /profile/profileDoc {
         allow read, write: if isOwner(userId);
@@ -40,7 +39,7 @@ service cloud.firestore {
       }
     }
 
-    // Dados da Empresa
+    // Dados da Empresa: Protegido por participação e papel
     match /companies/{companyId} {
       // Permite leitura se for membro
       allow read: if isSignedIn() && isMemberOf(companyId);

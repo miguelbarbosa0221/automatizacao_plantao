@@ -63,47 +63,42 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
       (firebaseUser) => {
         if (firebaseUser) {
           const profileRef = doc(firestore, 'users', firebaseUser.uid, 'profile', 'profileDoc');
+          
           const unsubscribeProfile = onSnapshot(profileRef, (snap) => {
-            const profileData = snap.data() || null;
-            
-            // Se o perfil não existe, liberamos o isUserLoading para que o AuthInitializer possa criar/reparar
-            if (!profileData) {
+            if (snap.exists()) {
+              const profileData = snap.data();
+              const companies = profileData?.companies || [];
+              const activeCoId = profileData?.activeCompanyId || (companies[0]?.id) || null;
+              
+              const currentCompany = companies.find((c: any) => c.id === activeCoId);
+              const userIsAdmin = currentCompany?.role === 'admin';
+
               setAuthState({
                 user: firebaseUser,
-                profile: null,
-                isAdmin: false,
-                activeCompanyId: null,
+                profile: profileData,
+                isAdmin: userIsAdmin,
+                activeCompanyId: activeCoId,
                 isUserLoading: false,
                 userError: null,
               });
-              return;
+            } else {
+              // Se o perfil não existe fisicamente, liberamos para o AuthInitializer criar
+              setAuthState(prev => ({
+                ...prev,
+                user: firebaseUser,
+                profile: null,
+                isUserLoading: false,
+                userError: null
+              }));
             }
-
-            const companies = profileData?.companies || [];
-            let activeCoId = profileData?.activeCompanyId || (companies[0]?.id) || null;
-            
-            const currentCompany = companies.find((c: any) => c.id === activeCoId);
-            const userIsAdmin = currentCompany?.role === 'admin';
-
-            setAuthState({
-              user: firebaseUser,
-              profile: profileData,
-              isAdmin: userIsAdmin,
-              activeCompanyId: activeCoId,
-              isUserLoading: false,
-              userError: null,
-            });
           }, (err) => {
-             console.error("Erro ao carregar perfil:", err);
-             // Em caso de erro de permissão no perfil, liberamos o estado para o AuthInitializer tentar recuperar
-             setAuthState({
+             // Em caso de erro (ex: permissão), liberamos para o inicializador tentar reparar
+             setAuthState(prev => ({
+               ...prev,
                user: firebaseUser,
-               profile: null,
-               isAdmin: false,
-               activeCompanyId: null,
                isUserLoading: false,
-               userError: err as any,
-             });
+               userError: err as any
+             }));
           });
           return () => unsubscribeProfile();
         } else {
