@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -85,15 +84,15 @@ export function useCollection<T = any>(
           path,
         })
 
-        // Silencia o erro para evitar loops fatais em tempo real de desenvolvimento
+        // Log the error but don't break the local state
         console.error("Firestore Permission denied at path:", path, serverError);
         
         setError(contextualError)
         setData(null)
         setIsLoading(false)
 
-        // Comentado para evitar que o erro suba para o listener global e trave a UI
-        // errorEmitter.emit('permission-error', contextualError);
+        // Emit to the global listener to show a friendly toast
+        errorEmitter.emit('permission-error', contextualError);
       }
     );
 

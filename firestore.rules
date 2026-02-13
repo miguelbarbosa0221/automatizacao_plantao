@@ -10,58 +10,36 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    // Obtém o documento de perfil de forma segura
-    function getProfile(userId) {
-      let profilePath = /databases/$(database)/documents/users/$(userId)/profile/profileDoc;
-      return exists(profilePath) ? get(profilePath).data : null;
+    function getRole(userId) {
+      // O perfil é armazenado em /users/{userId}/profile/profileDoc
+      // Usamos path() para garantir a referência correta
+      return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data.role;
     }
 
-    // Verifica se o usuário é membro da empresa no perfil
-    function isMemberOf(companyId) {
-      let profile = getProfile(request.auth.uid);
-      return isSignedIn() && profile != null && 
-             (profile.activeCompanyId == companyId || 
-              (profile.companies != null && profile.companies.filter(c => c.id == companyId).size() > 0));
+    function isAdmin(userId) {
+      return isSignedIn() && (getRole(userId) == 'admin');
     }
 
-    // Verifica se o usuário é administrador da empresa no perfil
-    function isAdminOf(companyId) {
-      let profile = getProfile(request.auth.uid);
-      return isSignedIn() && profile != null && 
-             profile.companies != null && 
-             profile.companies.filter(c => c.id == companyId && c.role == 'admin').size() > 0;
-    }
-
-    // Perfil do Usuário: Acesso total ao próprio diretório
+    // Coleções Privadas por Usuário
     match /users/{userId} {
-      allow read, write: if isOwner(userId);
+      allow get: if isOwner(userId);
+      allow create: if isSignedIn();
       
+      // Permite que o dono do documento leia e escreva em QUALQUER subcoleção sua (necessário para migração)
       match /{allPaths=**} {
         allow read, write: if isOwner(userId);
       }
     }
 
-    // Dados da Empresa: Proteção baseada em associação no perfil
-    match /companies/{companyId} {
-      allow read: if isSignedIn() && (isMemberOf(companyId) || isAdminOf(companyId));
-      allow create: if isSignedIn(); // Permite criar a empresa inicial no onboarding
-      allow update, delete: if isSignedIn() && isAdminOf(companyId);
-
-      match /categories/{categoryId} {
-        allow read: if isSignedIn() && isMemberOf(companyId);
-        allow write: if isSignedIn() && isAdminOf(companyId);
-      }
-
-      match /units/{unitId} {
-        allow read: if isSignedIn() && isMemberOf(companyId);
-        allow write: if isSignedIn() && isAdminOf(companyId);
-      }
-
-      match /demands/{demandId} {
-        allow read: if isSignedIn() && isMemberOf(companyId);
-        allow create: if isSignedIn() && isMemberOf(companyId);
-        allow update, delete: if isSignedIn() && (isAdminOf(companyId) || (isMemberOf(companyId) && resource.data.userId == request.auth.uid));
-      }
+    // Coleções Globais da Organização (Root Collections)
+    match /categories/{categoryId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(request.auth.uid);
+    }
+    
+    match /units/{unitId} {
+      allow read: if isSignedIn();
+      allow write: if isAdmin(request.auth.uid);
     }
 
     match /{allPaths=**} {
