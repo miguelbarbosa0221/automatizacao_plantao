@@ -37,8 +37,12 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       getDoc(profileRef).then((snap) => {
         const data = snap.data();
         
-        // Verifica se o perfil precisa de inicialização ou reparo de empresas
-        const needsRepair = !snap.exists() || !data?.companies || !Array.isArray(data.companies) || data.companies.length === 0;
+        // Verifica se o perfil precisa de inicialização ou reparo de empresas ou se o papel está incorreto
+        const needsRepair = !snap.exists() || 
+                           !data?.companies || 
+                           !Array.isArray(data.companies) || 
+                           data.companies.length === 0 ||
+                           !data.companies.find((c: any) => c.role === 'admin');
 
         if (needsRepair) {
           const batch = writeBatch(db);
@@ -55,7 +59,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             createdAt: data?.createdAt || new Date().toISOString()
           }, { merge: true });
 
-          // Atualiza ou cria o perfil com o vínculo de Admin
+          // Atualiza ou cria o perfil com o vínculo de Admin explicitamente
           batch.set(profileRef, {
             uid: user.uid,
             email: user.email || 'usuario@plantaoai.local',
@@ -68,7 +72,6 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
           }, { merge: true });
 
           batch.commit().catch(err => {
-            // Silenciosamente falha se já foi corrigido por outra aba/instância
             console.error("Erro ao inicializar perfil:", err);
           });
         }

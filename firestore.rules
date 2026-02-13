@@ -19,12 +19,13 @@ service cloud.firestore {
       let data = getProfileData(request.auth.uid);
       return isSignedIn() && data != null && 
              data.keys().contains('companies') &&
+             data.companies is list &&
              data.companies.filter(c => c.id == companyId).size() > 0;
     }
 
     function isAdminOf(companyId) {
       let data = getProfileData(request.auth.uid);
-      if (!isSignedIn() || data == null || !data.keys().contains('companies')) return false;
+      if (!isSignedIn() || data == null || !data.keys().contains('companies') || !(data.companies is list)) return false;
       let companyEntry = data.companies.filter(c => c.id == companyId);
       return companyEntry.size() > 0 && companyEntry[0].role == 'admin';
     }

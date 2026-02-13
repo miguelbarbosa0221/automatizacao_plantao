@@ -66,12 +66,12 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           const unsubscribeProfile = onSnapshot(profileRef, (snap) => {
             const profileData = snap.data() || null;
             
-            // Determina empresa ativa com fallback seguro
-            const activeCoId = profileData?.activeCompanyId || (profileData?.companies?.[0]?.id) || null;
+            // Determina empresa ativa com fallback seguro e validação de membro
             const companies = profileData?.companies || [];
-            const currentCompany = companies.find((c: any) => c.id === activeCoId);
+            let activeCoId = profileData?.activeCompanyId || (companies[0]?.id) || null;
             
-            // Se não encontrou a empresa ativa mas existem empresas, pega a primeira como Admin
+            // Verifica se o usuário realmente é membro da empresa ativa
+            const currentCompany = companies.find((c: any) => c.id === activeCoId);
             const userIsAdmin = currentCompany?.role === 'admin';
 
             setAuthState({
@@ -84,7 +84,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
             });
           }, (err) => {
              console.error("Erro ao carregar perfil:", err);
-             // Se erro for de permissão, pode ser que o doc ainda não exista
              setAuthState(prev => ({ ...prev, user: firebaseUser, isUserLoading: false }));
           });
           return () => unsubscribeProfile();
