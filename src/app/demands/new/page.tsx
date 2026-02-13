@@ -61,8 +61,29 @@ export default function HighPerformanceRegistryPage() {
   const activeCategories = useMemo(() => (categoriesData || []).filter(c => c.active), [categoriesData]);
   const activeUnits = useMemo(() => (unitsData || []).filter(u => u.active), [unitsData]);
 
-  const [rows, setRows] = useState<RowData[]>([
-    { 
+  const [rows, setRows] = useState<RowData[]>([]);
+  const [isSavingAll, setIsSavingAll] = useState(false);
+  const [isLoadedFromDraft, setIsLoadedFromDraft] = useState(false);
+
+  useEffect(() => {
+    if (!activeCompanyId) return;
+
+    const saved = localStorage.getItem(`${STORAGE_KEY}_${activeCompanyId}`);
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          setRows(parsed);
+          setIsLoadedFromDraft(true);
+          return;
+        }
+      } catch (e) {
+        console.error("Erro ao carregar rascunho", e);
+      }
+    }
+    
+    // Initial row creation deferred to client only to avoid hydration mismatch with Math.random()
+    setRows([{ 
       id: Math.random().toString(36).substr(2, 9), 
       unitName: "", 
       sector: "", 
@@ -71,25 +92,7 @@ export default function HighPerformanceRegistryPage() {
       itemName: "", 
       freeText: "", 
       details: ""
-    }
-  ]);
-
-  const [isSavingAll, setIsSavingAll] = useState(false);
-  const [isLoadedFromDraft, setIsLoadedFromDraft] = useState(false);
-
-  useEffect(() => {
-    const saved = localStorage.getItem(`${STORAGE_KEY}_${activeCompanyId}`);
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          setRows(parsed);
-          setIsLoadedFromDraft(true);
-        }
-      } catch (e) {
-        console.error("Erro ao carregar rascunho", e);
-      }
-    }
+    }]);
   }, [activeCompanyId]);
 
   useEffect(() => {
@@ -102,7 +105,7 @@ export default function HighPerformanceRegistryPage() {
     setRows(prev => {
       const newRows = prev.map(row => row.id === id ? { ...row, ...updates } : row);
       const changedRow = newRows.find(r => r.id === id);
-      const isLast = newRows[newRows.length - 1].id === id;
+      const isLast = newRows.length > 0 && newRows[newRows.length - 1].id === id;
       const hasData = changedRow && (changedRow.unitName || changedRow.categoryName || changedRow.freeText || changedRow.details);
 
       if (isLast && hasData) {
@@ -116,7 +119,7 @@ export default function HighPerformanceRegistryPage() {
   }, []);
 
   const removeRow = (id: string) => {
-    if (rows.length === 1) return;
+    if (rows.length <= 1) return;
     setRows(prev => prev.filter(r => r.id !== id));
   };
 
@@ -230,6 +233,13 @@ export default function HighPerformanceRegistryPage() {
                         isLast={index === rows.length - 1}
                       />
                     ))}
+                    {rows.length === 0 && !isUnitLoading && !isCatLoading && (
+                      <TableRow>
+                        <TableCell colSpan={8} className="text-center py-10 text-muted-foreground">
+                          Iniciando grid de registro...
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </div>

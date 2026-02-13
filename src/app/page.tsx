@@ -9,7 +9,7 @@ import { PlusCircle, ClipboardList, Share2, ArrowRight, Loader2, Copy, ShieldChe
 import Link from "next/link"
 import { useMemoFirebase, useCollection, useUser, useFirestore } from "@/firebase"
 import { collection, query, orderBy, limit } from "firebase/firestore"
-import { useMemo } from "react"
+import { useMemo, useState, useEffect } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { Badge } from "@/components/ui/badge"
 
@@ -29,12 +29,29 @@ export default function Home() {
 
   const { data: demands, isLoading } = useCollection(demandsQuery);
 
-  const todayMetrics = useMemo(() => {
-    if (!demands) return { total: 0, ai: 0, list: [] };
+  // Initialize metrics with safe defaults for SSR
+  const [todayMetrics, setTodayMetrics] = useState<{ total: number, ai: number, list: any[] }>({ 
+    total: 0, 
+    ai: 0, 
+    list: [] 
+  });
+
+  useEffect(() => {
+    if (!demands) {
+      setTodayMetrics({ total: 0, ai: 0, list: [] });
+      return;
+    }
+
+    // Dynamic date calculations must be inside useEffect to avoid hydration mismatch
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const filtered = demands.filter(d => new Date(d.timestamp) >= startOfToday);
-    return { total: filtered.length, ai: filtered.filter(d => d.source === 'free-text').length, list: filtered };
+    
+    setTodayMetrics({ 
+      total: filtered.length, 
+      ai: filtered.filter(d => d.source === 'free-text').length, 
+      list: filtered 
+    });
   }, [demands]);
 
   const copyToClipboard = (demand: any) => {
