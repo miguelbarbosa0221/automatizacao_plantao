@@ -1,4 +1,3 @@
-
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -7,7 +6,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Search, Filter, Copy, ExternalLink, Loader2 } from "lucide-react"
+import { Search, Filter, Copy, Loader2 } from "lucide-react"
 import { useState } from "react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
@@ -17,23 +16,29 @@ export default function HistoryPage() {
   const [search, setSearch] = useState("")
   const { toast } = useToast()
   const db = useFirestore()
-  const { user, activeCompanyId } = useUser()
+  const { user } = useUser() // activeCompanyId removido pois a busca agora é por User
 
+  // Lógica de busca atualizada para focar no UID do usuário
   const demandsQuery = useMemoFirebase(() => {
-    // Proteção: Só executa se houver banco de dados, usuário e uma empresa ativa selecionada
-    if (!db || !user?.uid || !activeCompanyId) return null;
-    
-    return query(
-      collection(db, "companies", activeCompanyId, "demands"),
-      orderBy("timestamp", "desc")
-    );
-  }, [db, user?.uid, activeCompanyId]);
+    // CRÍTICO: Se não tiver banco ou usuário logado, não tente buscar nada
+    if (!db || !user?.uid) return null;
+
+    try {
+      return query(
+        collection(db, "users", user.uid, "demands"),
+        orderBy("timestamp", "desc")
+      );
+    } catch (err) {
+      console.error("Falha ao criar query de histórico:", err);
+      return null;
+    }
+  }, [db, user?.uid]); // O UID é a dependência mestre aqui
 
   const { data: demands, isLoading } = useCollection(demandsQuery);
 
   const filteredDemands = (demands || []).filter(d => 
-    d.title.toLowerCase().includes(search.toLowerCase()) || 
-    d.description.toLowerCase().includes(search.toLowerCase())
+    (d.title || "").toLowerCase().includes(search.toLowerCase()) || 
+    (d.description || "").toLowerCase().includes(search.toLowerCase())
   )
 
   const copyToClipboard = (demand: any) => {
@@ -48,7 +53,7 @@ export default function HistoryPage() {
       <SidebarInset>
         <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
           <SidebarTrigger />
-          <h1 className="text-lg font-semibold font-headline">Histórico da Organização</h1>
+          <h1 className="text-lg font-semibold font-headline">Histórico Pessoal</h1>
         </header>
         <main className="flex-1 overflow-auto p-6 space-y-6">
           <div className="flex items-center gap-4">
@@ -71,13 +76,9 @@ export default function HistoryPage() {
               <div className="flex justify-center py-20">
                 <Loader2 className="animate-spin text-primary h-8 w-8" />
               </div>
-            ) : !activeCompanyId ? (
-              <div className="text-center py-20 text-muted-foreground">
-                Selecione uma empresa para visualizar o histórico.
-              </div>
             ) : filteredDemands.length === 0 ? (
               <div className="text-center py-20 text-muted-foreground">
-                Nenhuma demanda encontrada para esta empresa.
+                Nenhuma demanda encontrada no seu histórico.
               </div>
             ) : (
               filteredDemands.map((demand) => (
@@ -88,7 +89,7 @@ export default function HistoryPage() {
                         {demand.source === 'free-text' ? 'Texto Livre' : 'Estruturado'}
                       </Badge>
                       <span className="text-xs text-muted-foreground">
-                        {new Date(demand.timestamp).toLocaleDateString()}
+                        {demand.timestamp?.seconds ? new Date(demand.timestamp.seconds * 1000).toLocaleDateString() : 'Data n/a'}
                       </span>
                     </div>
                     <CardTitle className="text-lg">{demand.title}</CardTitle>

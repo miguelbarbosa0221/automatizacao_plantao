@@ -9,6 +9,7 @@ import {
   QuerySnapshot,
   CollectionReference,
 } from 'firebase/firestore';
+import { getAuth } from 'firebase/auth'; // Adicionado para verificação de usuario
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
@@ -26,7 +27,7 @@ export interface UseCollectionResult<T> {
 }
 
 /* Internal implementation of Query:
-  https://github.com/firebase/firebase-js-sdk/blob/c5f08a9bc5da0d2b0207802c972d53724ccef055/packages/firestore/src/lite-api/reference.ts#L143
+   https://github.com/firebase/firebase-js-sdk/blob/c5f08a9bc5da0d2b0207802c972d53724ccef055/packages/firestore/src/lite-api/reference.ts#L143
 */
 export interface InternalQuery extends Query<DocumentData> {
   _query: {
@@ -42,7 +43,7 @@ export interface InternalQuery extends Query<DocumentData> {
  * Handles nullable references/queries.
  */
 export function useCollection<T = any>(
-    memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
+   memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
 ): UseCollectionResult<T> {
   type ResultItemType = WithId<T>;
   type StateDataType = ResultItemType[] | null;
@@ -65,31 +66,56 @@ export function useCollection<T = any>(
     const unsubscribe = onSnapshot(
       memoizedTargetRefOrQuery,
       (snapshot: QuerySnapshot<DocumentData>) => {
-        const results: ResultItemType[] = [];
-        for (const doc of snapshot.docs) {
-          results.push({ ...(doc.data() as T), id: doc.id });
-        }
+        // --- LÓGICA DE INCLUSÃO: Mapeamento otimizado ---
+        const results = snapshot.docs.map((doc) => ({
+          id: doc.id,
+          ...(doc.data() as T),
+        }));
+        
         setData(results);
         setError(null);
         setIsLoading(false);
       },
       (serverError: FirestoreError) => {
+        // Extração do path (mantido do original pois é útil para debug)
         const path: string =
           memoizedTargetRefOrQuery.type === 'collection'
             ? (memoizedTargetRefOrQuery as CollectionReference).path
-            : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString()
+            : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
 
+        // --- LÓGICA DE INCLUSÃO: Tratamento de Permissão ---
+        
+        // Se o erro for de permissão, tratamos com cuidado para não causar loop de redirecionamento/erro
+        if (serverError.code === 'permission-denied') {
+          console.warn(`Aguardando permissões ou acesso negado em: ${path}`);
+          setIsLoading(false);
+          
+          // Verificamos se o usuário está logado antes de emitir o erro global
+          const auth = getAuth();
+          if (auth.currentUser) {
+             const contextualError = new FirestorePermissionError({
+                operation: 'list',
+                path,
+             });
+             setError(contextualError);
+             errorEmitter.emit('permission-error', contextualError);
+          }
+          // Se não houver currentUser, apenas paramos o loading e não emitimos erro
+          // para evitar conflito durante o processo de logout/login
+          return;
+        }
+
+        // Tratamento padrão para outros erros
         const contextualError = new FirestorePermissionError({
           operation: 'list',
           path,
-        })
+        });
 
-        // Log the error but don't break the local state
-        console.error("Firestore Permission denied at path:", path, serverError);
+        console.error("Firestore Error at path:", path, serverError);
         
-        setError(contextualError)
-        setData(null)
-        setIsLoading(false)
+        setError(contextualError);
+        setData(null);
+        setIsLoading(false);
 
         // Emit to the global listener to show a friendly toast
         errorEmitter.emit('permission-error', contextualError);
