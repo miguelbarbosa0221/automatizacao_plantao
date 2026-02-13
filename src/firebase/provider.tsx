@@ -66,33 +66,23 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           const unsubscribeProfile = onSnapshot(profileRef, (snap) => {
             const profileData = snap.data() || null;
             
-            // Se o documento não existe ainda, marcamos como carregando para o AuthInitializer resolver
+            // Se o perfil não existe, liberamos o isUserLoading para que o AuthInitializer possa criar/reparar
             if (!profileData) {
-              setAuthState(prev => ({ 
-                ...prev, 
-                user: firebaseUser, 
-                isUserLoading: true // Mantemos true para evitar queries ilegais
-              }));
+              setAuthState({
+                user: firebaseUser,
+                profile: null,
+                isAdmin: false,
+                activeCompanyId: null,
+                isUserLoading: false,
+                userError: null,
+              });
               return;
             }
 
             const companies = profileData?.companies || [];
             let activeCoId = profileData?.activeCompanyId || (companies[0]?.id) || null;
             
-            // Verificamos se o activeCoId é válido na lista de empresas do usuário
             const currentCompany = companies.find((c: any) => c.id === activeCoId);
-            
-            // Se o contexto ainda é inválido (ex: acabou de criar), esperamos o AuthInitializer terminar
-            if (!activeCoId || !currentCompany) {
-              setAuthState(prev => ({ 
-                ...prev, 
-                user: firebaseUser, 
-                profile: profileData,
-                isUserLoading: true 
-              }));
-              return;
-            }
-
             const userIsAdmin = currentCompany?.role === 'admin';
 
             setAuthState({
@@ -104,13 +94,16 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
               userError: null,
             });
           }, (err) => {
-             // Se houver erro de permissão ao ler o próprio perfil, marcamos como carregando
              console.error("Erro ao carregar perfil:", err);
-             setAuthState(prev => ({ 
-               ...prev, 
-               user: firebaseUser, 
-               isUserLoading: true 
-             }));
+             // Em caso de erro de permissão no perfil, liberamos o estado para o AuthInitializer tentar recuperar
+             setAuthState({
+               user: firebaseUser,
+               profile: null,
+               isAdmin: false,
+               activeCompanyId: null,
+               isUserLoading: false,
+               userError: err as any,
+             });
           });
           return () => unsubscribeProfile();
         } else {

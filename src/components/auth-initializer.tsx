@@ -10,7 +10,7 @@ import { usePathname, useRouter } from 'next/navigation';
 export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const db = useFirestore();
-  const { user, isUserLoading } = useUser();
+  const { user, isUserLoading, profile } = useUser();
   const pathname = usePathname();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
@@ -23,6 +23,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted) return;
 
+    // Redirecionamento de login
     if (!isUserLoading && !user && pathname !== '/login') {
       router.push('/login');
     }
@@ -33,64 +34,56 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
 
     // Lógica de reparo/criação de perfil para Multi-Tenant
     if (user && db && !isUserLoading && !isInitializingProfile) {
-      const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
-      
-      getDoc(profileRef).then((snap) => {
-        const data = snap.data();
+      // Se não temos perfil ou ele está incompleto
+      const needsRepair = !profile || 
+                         !profile.companies || 
+                         !Array.isArray(profile.companies) || 
+                         profile.companies.length === 0 ||
+                         !profile.activeCompanyId;
+
+      if (needsRepair) {
+        setIsInitializingProfile(true);
+        const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
         
-        // Verifica se o perfil precisa de inicialização ou reparo
-        // Se snap não existe, ou se não tem empresas, ou se a empresa ativa não está na lista
-        const needsRepair = !snap.exists() || 
-                           !data?.companies || 
-                           !Array.isArray(data.companies) || 
-                           data.companies.length === 0 ||
-                           !data.activeCompanyId;
+        const stableCompanyId = `org-${user.uid.substring(0, 10)}`;
+        const companyRef = doc(db, 'companies', stableCompanyId);
+        const batch = writeBatch(db);
+        
+        batch.set(companyRef, {
+          id: stableCompanyId,
+          name: 'Minha Organização',
+          active: true,
+          createdAt: new Date().toISOString()
+        }, { merge: true });
 
-        if (needsRepair) {
-          setIsInitializingProfile(true);
-          const batch = writeBatch(db);
-          
-          // ID ESTÁVEL: Baseado no UID do usuário para evitar criação de múltiplas empresas aleatórias
-          const stableCompanyId = `org-${user.uid.substring(0, 10)}`;
-          const companyRef = doc(db, 'companies', stableCompanyId);
-          
-          batch.set(companyRef, {
-            id: stableCompanyId,
-            name: 'Minha Organização',
-            active: true,
-            createdAt: data?.createdAt || new Date().toISOString()
-          }, { merge: true });
+        batch.set(profileRef, {
+          uid: user.uid,
+          email: user.email || 'usuario@plantaoai.local',
+          displayName: user.displayName || user.email?.split('@')[0] || 'Plantonista',
+          activeCompanyId: stableCompanyId,
+          companies: [
+            { id: stableCompanyId, name: 'Minha Organização', role: 'admin' }
+          ],
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
 
-          batch.set(profileRef, {
-            uid: user.uid,
-            email: user.email || 'usuario@plantaoai.local',
-            displayName: user.displayName || user.email?.split('@')[0] || 'Plantonista',
-            activeCompanyId: stableCompanyId,
-            companies: [
-              { id: stableCompanyId, name: 'Minha Organização', role: 'admin' }
-            ],
-            updatedAt: new Date().toISOString()
-          }, { merge: true });
-
-          batch.commit()
-            .then(() => {
-              setIsInitializingProfile(false);
-            })
-            .catch(err => {
-              console.error("Erro ao inicializar perfil:", err);
-              setIsInitializingProfile(false);
-            });
-        }
-      });
+        batch.commit()
+          .then(() => {
+            setIsInitializingProfile(false);
+          })
+          .catch(err => {
+            console.error("Erro ao inicializar perfil:", err);
+            setIsInitializingProfile(false);
+          });
+      }
     }
-  }, [user, isUserLoading, db, pathname, router, isMounted, isInitializingProfile]);
+  }, [user, isUserLoading, db, profile, pathname, router, isMounted, isInitializingProfile]);
 
   if (!isMounted) {
     return null;
   }
 
-  // Se o usuário está logado mas o perfil está sendo reparado, bloqueamos a renderização
-  // Isso evita que useCollection tente ler coleções sem permissão
+  // Se o usuário está logado mas o perfil está sendo reparado ou ainda carregando
   if (isUserLoading || isInitializingProfile) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
