@@ -4,13 +4,13 @@
 import { useEffect, useState } from 'react';
 import { useAuth, useUser, useFirestore } from '@/firebase';
 import { Loader2 } from 'lucide-react';
-import { doc, getDoc, setDoc, writeBatch } from 'firebase/firestore';
+import { doc, getDoc, writeBatch } from 'firebase/firestore';
 import { usePathname, useRouter } from 'next/navigation';
 
 export function AuthInitializer({ children }: { children: React.ReactNode }) {
   const auth = useAuth();
   const db = useFirestore();
-  const { user, isUserLoading, profile } = useUser();
+  const { user, isUserLoading } = useUser();
   const pathname = usePathname();
   const router = useRouter();
   const [isMounted, setIsMounted] = useState(false);
@@ -37,14 +37,17 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       getDoc(profileRef).then((snap) => {
         const data = snap.data();
         
-        // Se o perfil não existe ou não tem a lista de empresas (antigo)
-        if (!snap.exists() || !data?.companies || data.companies.length === 0) {
+        // Verifica se o perfil precisa de inicialização ou reparo de empresas
+        const needsRepair = !snap.exists() || !data?.companies || !Array.isArray(data.companies) || data.companies.length === 0;
+
+        if (needsRepair) {
           const batch = writeBatch(db);
           
+          // Usa ID existente ou gera um novo de forma estável
           const companyId = data?.activeCompanyId || Math.random().toString(36).substr(2, 9);
           const companyRef = doc(db, 'companies', companyId);
           
-          // Garante que a empresa exista
+          // Garante que a empresa exista na coleção global
           batch.set(companyRef, {
             id: companyId,
             name: 'Minha Organização',
@@ -52,7 +55,7 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             createdAt: data?.createdAt || new Date().toISOString()
           }, { merge: true });
 
-          // Atualiza ou cria o perfil com a nova estrutura de vínculos
+          // Atualiza ou cria o perfil com o vínculo de Admin
           batch.set(profileRef, {
             uid: user.uid,
             email: user.email || 'usuario@plantaoai.local',
@@ -64,11 +67,14 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
             updatedAt: new Date().toISOString()
           }, { merge: true });
 
-          batch.commit();
+          batch.commit().catch(err => {
+            // Silenciosamente falha se já foi corrigido por outra aba/instância
+            console.error("Erro ao inicializar perfil:", err);
+          });
         }
       });
     }
-  }, [user, isUserLoading, auth, db, profile, pathname, router, isMounted]);
+  }, [user, isUserLoading, db, pathname, router, isMounted]);
 
   if (!isMounted) {
     return null;

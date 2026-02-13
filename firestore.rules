@@ -10,20 +10,23 @@ service cloud.firestore {
       return isSignedIn() && request.auth.uid == userId;
     }
 
-    function getProfile(userId) {
-      return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data;
+    function getProfileData(userId) {
+      let path = /databases/$(database)/documents/users/$(userId)/profile/profileDoc;
+      return exists(path) ? get(path).data : null;
     }
 
     function isMemberOf(companyId) {
-      let profile = getProfile(request.auth.uid);
-      // Verifica se o ID da empresa está na lista de empresas do perfil
-      return isSignedIn() && profile.companies.filter(c => c.id == companyId).size() > 0;
+      let data = getProfileData(request.auth.uid);
+      return isSignedIn() && data != null && 
+             data.keys().contains('companies') &&
+             data.companies.filter(c => c.id == companyId).size() > 0;
     }
 
     function isAdminOf(companyId) {
-      let profile = getProfile(request.auth.uid);
-      let companyEntry = profile.companies.filter(c => c.id == companyId);
-      return isSignedIn() && companyEntry.size() > 0 && companyEntry[0].role == 'admin';
+      let data = getProfileData(request.auth.uid);
+      if (!isSignedIn() || data == null || !data.keys().contains('companies')) return false;
+      let companyEntry = data.companies.filter(c => c.id == companyId);
+      return companyEntry.size() > 0 && companyEntry[0].role == 'admin';
     }
 
     // Perfil do Usuário
