@@ -13,9 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, query, orderBy } from "firebase/firestore"
 import Link from "next/link"
-import { useCompany } from "@/context/company-context" // <--- Importante: Importar o contexto
 
-// Interface para garantir que sabemos o que estamos manipulando
 interface Demand {
   id: string
   title: string
@@ -31,23 +29,23 @@ export default function HistoryPage() {
   const [search, setSearch] = useState("")
   const { toast } = useToast()
   const db = useFirestore()
-  const { user } = useUser()
-  const { currentCompany } = useCompany() // <--- Pegar a empresa atual do contexto
+  const { user, profile, activeCompanyId } = useUser()
 
-  // 1. Query Inteligente (Híbrida)
+  const currentCompany = useMemo(() => {
+    return profile?.companies?.find((c: any) => c.id === activeCompanyId);
+  }, [profile, activeCompanyId]);
+
   const demandsQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
 
     try {
-      // MODO EMPRESA: Se tiver uma empresa selecionada, busca nela
-      if (currentCompany) {
+      if (activeCompanyId) {
         return query(
-          collection(db, "companies", currentCompany.id, "demands"),
+          collection(db, "companies", activeCompanyId, "demands"),
           orderBy("timestamp", "desc")
         );
       }
 
-      // MODO PESSOAL (Fallback): Se não tiver empresa, busca no usuário
       return query(
         collection(db, "users", user.uid, "demands"),
         orderBy("timestamp", "desc")
@@ -56,12 +54,11 @@ export default function HistoryPage() {
       console.error("Erro na query:", err);
       return null;
     }
-  }, [db, user?.uid, currentCompany?.id]); // <--- Adicionar dependência da empresa
+  }, [db, user?.uid, activeCompanyId]);
 
   const { data, isLoading } = useCollection(demandsQuery);
   const demands = (data as Demand[]) || [];
 
-  // 2. Filtragem Otimizada com useMemo
   const filteredDemands = useMemo(() => {
     const term = search.toLowerCase();
     return demands.filter(d => 
@@ -71,7 +68,6 @@ export default function HistoryPage() {
     );
   }, [demands, search]);
 
-  // 3. Função de Copiar Melhorada
   const copyToClipboard = (demand: Demand) => {
     const text = [
       `*${demand.title}*`,
@@ -91,7 +87,6 @@ export default function HistoryPage() {
     });
   }
 
-  // 4. Formatador de Data
   const formatDate = (seconds?: number) => {
     if (!seconds) return "Data desconhecida";
     return new Date(seconds * 1000).toLocaleString('pt-BR', {
@@ -103,12 +98,10 @@ export default function HistoryPage() {
     <div className="flex h-screen bg-background">
       <AppSidebar />
       <SidebarInset>
-        {/* Header Fixo */}
         <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <SidebarTrigger />
             <h1 className="text-lg font-bold tracking-tight">
-              {/* Mostra o contexto atual no título */}
               Histórico {currentCompany ? `(${currentCompany.name})` : "(Pessoal)"}
             </h1>
           </div>
@@ -118,7 +111,6 @@ export default function HistoryPage() {
         </header>
 
         <main className="flex-1 overflow-auto p-4 md:p-6 space-y-6">
-          {/* Barra de Busca */}
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
@@ -134,10 +126,8 @@ export default function HistoryPage() {
             </Button>
           </div>
 
-          {/* Lista de Cards */}
           <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1 xl:grid-cols-2">
             {isLoading ? (
-              // Loading State com Skeletons
               Array.from({ length: 4 }).map((_, i) => (
                 <Card key={i} className="border shadow-sm">
                   <CardHeader className="space-y-2">
@@ -151,14 +141,12 @@ export default function HistoryPage() {
                 </Card>
               ))
             ) : filteredDemands.length === 0 ? (
-              // Empty State
               <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/10">
                 <FileText className="w-10 h-10 mb-4 opacity-20" />
                 <p>Nenhum registro encontrado {currentCompany ? `em ${currentCompany.name}` : "no seu histórico pessoal"}.</p>
                 {search && <Button variant="link" onClick={() => setSearch("")}>Limpar busca</Button>}
               </div>
             ) : (
-              // Lista Real
               filteredDemands.map((demand) => (
                 <Card key={demand.id} className="group flex flex-col border shadow-sm hover:shadow-md transition-all hover:border-primary/20">
                   <CardHeader className="pb-3">
@@ -184,12 +172,10 @@ export default function HistoryPage() {
                   </CardHeader>
 
                   <CardContent className="flex-1 flex flex-col gap-4">
-                    {/* Descrição do Problema */}
                     <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border border-transparent group-hover:border-border/50 transition-colors">
                       <p className="line-clamp-3">{demand.description}</p>
                     </div>
 
-                    {/* Resolução (Destaque) */}
                     <div className="mt-auto pt-2">
                       <div className="flex items-start gap-2">
                         <CheckCircle2 className={`w-4 h-4 mt-0.5 ${demand.resolution ? "text-green-500" : "text-yellow-500"}`} />

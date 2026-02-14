@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useMemo } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,10 +10,9 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trash2, Plus, Building2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useCompany } from "@/context/company-context";
+import { useUser } from "@/firebase";
 import { ConfigService, AppConfig } from "@/lib/config-store";
 
-// Configuração Padrão para Reset e Fallback Visual
 const DEFAULT_CONFIG: AppConfig = {
   categories: ["Hardware", "Software", "Rede", "Impressora", "Outros"],
   units: ["UTI", "Emergência", "Recepção", "Centro Cirúrgico", "Administrativo"],
@@ -21,7 +20,7 @@ const DEFAULT_CONFIG: AppConfig = {
 };
 
 export default function SettingsPage() {
-  const { currentCompany } = useCompany();
+  const { profile, activeCompanyId } = useUser();
   const { toast } = useToast();
   
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -31,27 +30,22 @@ export default function SettingsPage() {
   const [newUnit, setNewUnit] = useState("");
   const [newItem, setNewItem] = useState("");
 
+  const currentCompany = useMemo(() => {
+    return profile?.companies?.find((c: any) => c.id === activeCompanyId);
+  }, [profile, activeCompanyId]);
+
   useEffect(() => {
-    if (currentCompany?.id) {
+    if (activeCompanyId) {
       loadData();
     }
-  }, [currentCompany]);
-
-  // Log para depuração: Verifique o console do navegador (F12)
-  useEffect(() => {
-    console.log("Estado atual da configuração:", config);
-  }, [config]);
+  }, [activeCompanyId]);
 
   async function loadData() {
-    if (!currentCompany?.id) return;
+    if (!activeCompanyId) return;
     setIsLoading(true);
     try {
-      console.log("Carregando configurações...");
-      const data = await ConfigService.loadConfig(currentCompany.id);
-      
-      // GARANTIA EXTRA: Se vier vazio, forçamos o default visualmente também
+      const data = await ConfigService.loadConfig(activeCompanyId);
       if (!data || (!data.categories?.length && !data.units?.length)) {
-          console.warn("Dados vieram vazios, usando default visual.");
           setConfig(DEFAULT_CONFIG);
       } else {
           setConfig(data);
@@ -65,28 +59,26 @@ export default function SettingsPage() {
   }
 
   const handleAdd = async (field: keyof AppConfig, value: string, setValue: (s: string) => void) => {
-    if (!value.trim() || !currentCompany?.id) return;
+    if (!value.trim() || !activeCompanyId) return;
     
     try {
-      // Proteção contra config null
       const safeConfig = config || DEFAULT_CONFIG;
       const currentList = safeConfig[field] || [];
-      
       const updatedConfig = { ...safeConfig, [field]: [...currentList, value] } as AppConfig;
       
-      setConfig(updatedConfig); // Atualização Otimista
-      await ConfigService.addItem(currentCompany.id, field, value);
+      setConfig(updatedConfig);
+      await ConfigService.addItem(activeCompanyId, field, value);
       setValue(""); 
       toast({ title: "Item adicionado!" });
     } catch (error) {
       console.error(error);
-      loadData(); // Reverte em caso de erro
+      loadData();
       toast({ variant: "destructive", title: "Erro ao salvar." });
     }
   };
 
   const handleRemove = async (field: keyof AppConfig, value: string) => {
-    if (!currentCompany?.id || !config) return;
+    if (!activeCompanyId || !config) return;
 
     try {
       const updatedConfig = { 
@@ -94,8 +86,8 @@ export default function SettingsPage() {
         [field]: config[field].filter(item => item !== value) 
       } as AppConfig;
 
-      setConfig(updatedConfig); // Atualização Otimista
-      await ConfigService.removeItem(currentCompany.id, field, value);
+      setConfig(updatedConfig);
+      await ConfigService.removeItem(activeCompanyId, field, value);
       toast({ title: "Item removido." });
     } catch (error) {
       console.error(error);
@@ -105,20 +97,15 @@ export default function SettingsPage() {
   };
 
   const handleResetDefaults = async () => {
-    if (!currentCompany?.id) return;
+    if (!activeCompanyId) return;
     if (!confirm("Isso vai restaurar as categorias padrão. Tem certeza?")) return;
 
     try {
       setIsLoading(true);
-      // Força visual imediata
       setConfig(DEFAULT_CONFIG);
-      
-      // Tenta salvar no banco item a item (já que é arrayUnion)
-      // Nota: Idealmente seu ConfigService teria um 'saveAll' ou 'reset', mas isso resolve por hora
-      for (const cat of DEFAULT_CONFIG.categories) await ConfigService.addItem(currentCompany.id, 'categories', cat);
-      for (const unit of DEFAULT_CONFIG.units) await ConfigService.addItem(currentCompany.id, 'units', unit);
-      for (const item of DEFAULT_CONFIG.items) await ConfigService.addItem(currentCompany.id, 'items', item);
-      
+      for (const cat of DEFAULT_CONFIG.categories) await ConfigService.addItem(activeCompanyId, 'categories', cat);
+      for (const unit of DEFAULT_CONFIG.units) await ConfigService.addItem(activeCompanyId, 'units', unit);
+      for (const item of DEFAULT_CONFIG.items) await ConfigService.addItem(activeCompanyId, 'items', item);
       toast({ title: "Padrões restaurados!" });
     } catch (error) {
       console.error(error);
@@ -128,7 +115,7 @@ export default function SettingsPage() {
     }
   };
 
-  if (!currentCompany) {
+  if (!activeCompanyId) {
     return (
         <div className="flex h-screen bg-background items-center justify-center flex-col gap-4">
             <p className="text-muted-foreground animate-pulse">Carregando dados da empresa...</p>
@@ -152,7 +139,7 @@ export default function SettingsPage() {
              </Button>
              <div className="flex items-center gap-2 text-sm px-3 py-1 bg-muted rounded-md">
                 <Building2 className="w-4 h-4 text-primary" />
-                <span className="font-medium">{currentCompany.name}</span>
+                <span className="font-medium">{currentCompany?.name || "Empresa Ativa"}</span>
              </div>
           </div>
         </header>
@@ -168,7 +155,7 @@ export default function SettingsPage() {
             <TabsContent value="categories">
               <ConfigCard 
                 title="Categorias de Chamado"
-                description={`Tipos de problemas para ${currentCompany.name}.`}
+                description={`Tipos de problemas para ${currentCompany?.name}.`}
                 items={config?.categories || []}
                 inputValue={newCategory}
                 onInputChange={setNewCategory}
@@ -181,7 +168,7 @@ export default function SettingsPage() {
             <TabsContent value="units">
               <ConfigCard 
                 title="Unidades e Setores"
-                description={`Locais da ${currentCompany.name}.`}
+                description={`Locais da ${currentCompany?.name}.`}
                 items={config?.units || []}
                 inputValue={newUnit}
                 onInputChange={setNewUnit}
@@ -194,7 +181,7 @@ export default function SettingsPage() {
             <TabsContent value="items">
               <ConfigCard 
                 title="Itens de Inventário"
-                description={`Equipamentos da ${currentCompany.name}.`}
+                description={`Equipamentos da ${currentCompany?.name}.`}
                 items={config?.items || []}
                 inputValue={newItem}
                 onInputChange={setNewItem} 
@@ -210,7 +197,6 @@ export default function SettingsPage() {
   );
 }
 
-// Componente Auxiliar
 function ConfigCard({ title, description, items, inputValue, onInputChange, onAdd, onRemove, isLoading }: any) {
   return (
     <Card>

@@ -5,13 +5,14 @@ import React, { DependencyList, createContext, useContext, ReactNode, useMemo, u
 import { FirebaseApp } from 'firebase/app';
 import { Firestore, doc, onSnapshot } from 'firebase/firestore';
 import { Auth, User, onAuthStateChanged } from 'firebase/auth';
-import { FirebaseErrorListener } from '@/components/FirebaseErrorListener'
+import { FirebaseErrorListener } from '@/components/FirebaseErrorListener';
+import { initializeFirebase } from './init';
 
 interface FirebaseProviderProps {
   children: ReactNode;
-  firebaseApp: FirebaseApp;
-  firestore: Firestore;
-  auth: Auth;
+  firebaseApp?: FirebaseApp;
+  firestore?: Firestore;
+  auth?: Auth;
 }
 
 interface UserAuthState {
@@ -42,10 +43,20 @@ export const FirebaseContext = createContext<FirebaseContextState | undefined>(u
 
 export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   children,
-  firebaseApp,
-  firestore,
-  auth,
+  firebaseApp: propApp,
+  firestore: propFirestore,
+  auth: propAuth,
 }) => {
+  // Memoize SDKs: use props if provided, otherwise initialize
+  const sdks = useMemo(() => {
+    if (propApp && propFirestore && propAuth) {
+      return { firebaseApp: propApp, firestore: propFirestore, auth: propAuth };
+    }
+    return initializeFirebase();
+  }, [propApp, propFirestore, propAuth]);
+
+  const { firebaseApp, firestore, auth } = sdks;
+
   const [authState, setAuthState] = useState<UserAuthState>({
     user: null,
     profile: null,
@@ -82,15 +93,14 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
                 userError: null,
               });
             } else {
-              setAuthState(prev => ({
-                ...prev,
+              setAuthState({
                 user: firebaseUser,
                 profile: null,
                 isAdmin: false,
                 activeCompanyId: null,
                 isUserLoading: false,
                 userError: null
-              }));
+              });
             }
           }, (err) => {
              setAuthState(prev => ({

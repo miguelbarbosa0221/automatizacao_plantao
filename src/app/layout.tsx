@@ -1,10 +1,10 @@
+
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseProvider } from "@/firebase/provider";
-import { CompanyProvider } from "@/context/company-context"; // <--- Importante
-import { FirebaseErrorListener } from "@/components/FirebaseErrorListener";
+import { AuthInitializer } from "@/components/auth-initializer";
 
 const inter = Inter({ subsets: ["latin"] });
 
@@ -19,13 +19,12 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR">
+    <html lang="pt-BR" suppressHydrationWarning>
       <body className={inter.className}>
         <FirebaseProvider>
-          <CompanyProvider> {/* <--- A mágica acontece aqui */}
-            <FirebaseErrorListener />
+          <AuthInitializer>
             {children}
-          </CompanyProvider>
+          </AuthInitializer>
         </FirebaseProvider>
         <Toaster />
       </body>
