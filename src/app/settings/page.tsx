@@ -8,47 +8,44 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trash2, Plus, Save } from "lucide-react";
+import { Trash2, Plus, Building2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/firebase";
-import { useCompany } from "@/context/company-context"; // <--- Importante
+import { useCompany } from "@/context/company-context";
 import { ConfigService, AppConfig } from "@/lib/config-store";
 
 export default function SettingsPage() {
-  const { user } = useUser();
-  const { currentCompany } = useCompany(); // <--- Pegando a empresa atual
+  const { currentCompany } = useCompany();
   const { toast } = useToast();
+  
   const [config, setConfig] = useState<AppConfig | null>(null);
   const [isLoading, setIsLoading] = useState(true);
   
-  // Estados para os inputs de novos itens
+  // Estados para os inputs
   const [newCategory, setNewCategory] = useState("");
   const [newUnit, setNewUnit] = useState("");
   const [newItem, setNewItem] = useState("");
 
-  // Carregar dados ao iniciar ou mudar de empresa
+  // Monitora a empresa atual
   useEffect(() => {
-    if (user) {
+    if (currentCompany?.id) {
       loadData();
     }
-  }, [user, currentCompany]); // <--- Recarrega se a empresa mudar
+  }, [currentCompany]);
 
   async function loadData() {
+    if (!currentCompany?.id) return;
+    
     setIsLoading(true);
-    if (user) {
-      const data = await ConfigService.loadConfig(user.uid, currentCompany?.id);
-      setConfig(data);
-    }
+    const data = await ConfigService.loadConfig(currentCompany.id);
+    setConfig(data);
     setIsLoading(false);
   }
 
-  // Função genérica para adicionar
   const handleAdd = async (field: keyof AppConfig, value: string, setValue: (s: string) => void) => {
-    if (!value.trim() || !user) return;
+    if (!value.trim() || !currentCompany?.id) return;
     
     try {
-      // Atualização Otimista (na tela antes do banco)
-      const oldConfig = config;
+      // Atualização Otimista (feedback imediato na tela)
       if (config) {
         setConfig({
           ...config,
@@ -56,20 +53,18 @@ export default function SettingsPage() {
         });
       }
 
-      await ConfigService.addItem(user.uid, field, value, currentCompany?.id);
-      setValue(""); // Limpa o input
-      
-      toast({ title: "Adicionado com sucesso!" });
+      await ConfigService.addItem(currentCompany.id, field, value);
+      setValue(""); 
+      toast({ title: "Item adicionado com sucesso!" });
     } catch (error) {
       console.error(error);
-      if (config) setConfig(config); // Reverte se der erro
+      loadData(); // Reverte se der erro
       toast({ variant: "destructive", title: "Erro ao salvar." });
     }
   };
 
-  // Função genérica para remover
   const handleRemove = async (field: keyof AppConfig, value: string) => {
-    if (!user || !config) return;
+    if (!currentCompany?.id || !config) return;
 
     try {
       // Atualização Otimista
@@ -78,15 +73,23 @@ export default function SettingsPage() {
         [field]: config[field].filter(item => item !== value)
       });
 
-      await ConfigService.removeItem(user.uid, field, value, currentCompany?.id);
-      
+      await ConfigService.removeItem(currentCompany.id, field, value);
       toast({ title: "Item removido." });
     } catch (error) {
       console.error(error);
-      loadData(); // Recarrega se der erro
+      loadData();
       toast({ variant: "destructive", title: "Erro ao remover." });
     }
   };
+
+  // Se não carregou a empresa ainda (delay do contexto), mostra loading simples
+  if (!currentCompany) {
+    return (
+        <div className="flex h-screen bg-background items-center justify-center">
+            <p className="text-muted-foreground animate-pulse">Carregando dados da empresa...</p>
+        </div>
+    );
+  }
 
   return (
     <div className="flex h-screen bg-background">
@@ -96,8 +99,8 @@ export default function SettingsPage() {
           <SidebarTrigger />
           <div className="flex flex-col">
             <h1 className="text-lg font-bold">Configurações</h1>
-            <span className="text-xs text-muted-foreground">
-              {currentCompany ? `Gerenciando: ${currentCompany.name}` : "Gerenciando: Área Pessoal"}
+            <span className="text-xs text-muted-foreground flex items-center gap-1">
+               <Building2 className="w-3 h-3" /> Gerenciando: {currentCompany.name}
             </span>
           </div>
         </header>
@@ -110,11 +113,10 @@ export default function SettingsPage() {
               <TabsTrigger value="items">Itens de Inventário</TabsTrigger>
             </TabsList>
 
-            {/* TAB: CATEGORIAS */}
             <TabsContent value="categories">
               <ConfigCard 
                 title="Categorias de Chamado"
-                description="Defina os tipos de problemas para classificar os chamados."
+                description={`Tipos de problemas disponíveis para a ${currentCompany.name}.`}
                 items={config?.categories || []}
                 inputValue={newCategory}
                 onInputChange={setNewCategory}
@@ -124,11 +126,10 @@ export default function SettingsPage() {
               />
             </TabsContent>
 
-            {/* TAB: UNIDADES */}
             <TabsContent value="units">
               <ConfigCard 
                 title="Unidades e Setores"
-                description="Cadastre os locais de atendimento (ex: UTI, Recepção)."
+                description={`Locais de atendimento cadastrados na ${currentCompany.name}.`}
                 items={config?.units || []}
                 inputValue={newUnit}
                 onInputChange={setNewUnit}
@@ -138,11 +139,10 @@ export default function SettingsPage() {
               />
             </TabsContent>
 
-            {/* TAB: ITENS */}
             <TabsContent value="items">
               <ConfigCard 
                 title="Itens de Inventário"
-                description="Lista de equipamentos comuns para seleção rápida."
+                description={`Equipamentos padrão para seleção rápida na ${currentCompany.name}.`}
                 items={config?.items || []}
                 inputValue={newItem}
                 onInputChange={setNewItem}
@@ -158,7 +158,7 @@ export default function SettingsPage() {
   );
 }
 
-// Sub-componente para evitar repetição de código
+// Componente visual reutilizável
 function ConfigCard({ title, description, items, inputValue, onInputChange, onAdd, onRemove, isLoading }: any) {
   return (
     <Card>
@@ -183,7 +183,7 @@ function ConfigCard({ title, description, items, inputValue, onInputChange, onAd
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Carregando...</p>
           ) : items.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">Nenhum item cadastrado.</p>
+            <p className="text-sm text-muted-foreground italic">Nenhum item cadastrado nesta empresa.</p>
           ) : (
             items.map((item: string, idx: number) => (
               <Badge key={idx} variant="secondary" className="pl-3 pr-1 py-1 flex items-center gap-2 text-sm">
