@@ -1,14 +1,16 @@
+import type { Metadata } from "next";
+import { Inter } from "next/font/google";
+import "./globals.css";
+import { Toaster } from "@/components/ui/toaster";
+import { FirebaseProvider } from "@/firebase/provider";
+import { CompanyProvider } from "@/context/company-context"; // <--- Importante
+import { FirebaseErrorListener } from "@/components/FirebaseErrorListener";
 
-import type {Metadata} from 'next';
-import './globals.css';
-import {SidebarProvider} from '@/components/ui/sidebar';
-import {Toaster} from '@/components/ui/toaster';
-import {FirebaseClientProvider} from '@/firebase/client-provider';
-import {AuthInitializer} from '@/components/auth-initializer';
+const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: 'PlantãoAI - Gestão de Demandas de TI',
-  description: 'Sistema centralizado para gestão de demandas de TI durante plantão.',
+  title: "PlantãoAI",
+  description: "Gestão inteligente de escalas e chamados",
 };
 
 export default function RootLayout({
@@ -17,21 +19,15 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html lang="pt-BR" suppressHydrationWarning>
-      <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" />
-      </head>
-      <body className="font-body antialiased bg-background text-foreground">
-        <FirebaseClientProvider>
-          <AuthInitializer>
-            <SidebarProvider>
-              {children}
-              <Toaster />
-            </SidebarProvider>
-          </AuthInitializer>
-        </FirebaseClientProvider>
+    <html lang="pt-BR">
+      <body className={inter.className}>
+        <FirebaseProvider>
+          <CompanyProvider> {/* <--- A mágica acontece aqui */}
+            <FirebaseErrorListener />
+            {children}
+          </CompanyProvider>
+        </FirebaseProvider>
+        <Toaster />
       </body>
     </html>
   );

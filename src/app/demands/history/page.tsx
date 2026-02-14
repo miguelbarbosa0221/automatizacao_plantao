@@ -1,4 +1,3 @@
-
 "use client"
 
 import { useMemo, useState } from "react"
@@ -14,6 +13,7 @@ import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, query, orderBy } from "firebase/firestore"
 import Link from "next/link"
+import { useCompany } from "@/context/company-context" // <--- Importante: Importar o contexto
 
 // Interface para garantir que sabemos o que estamos manipulando
 interface Demand {
@@ -23,7 +23,7 @@ interface Demand {
   resolution?: string
   category?: string
   source?: 'free-text' | 'form'
-  timestamp?: string | { seconds: number }
+  timestamp?: { seconds: number }
   status?: 'done' | 'pending'
 }
 
@@ -31,22 +31,23 @@ export default function HistoryPage() {
   const [search, setSearch] = useState("")
   const { toast } = useToast()
   const db = useFirestore()
-  const { user, activeCompanyId } = useUser()
+  const { user } = useUser()
+  const { currentCompany } = useCompany() // <--- Pegar a empresa atual do contexto
 
-  // 1. Query Segura (Arquitetura Multi-Tenant)
+  // 1. Query Inteligente (Híbrida)
   const demandsQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
 
     try {
-      // 1. Modo Empresa (Prioritário no novo sistema)
-      if (activeCompanyId) {
+      // MODO EMPRESA: Se tiver uma empresa selecionada, busca nela
+      if (currentCompany) {
         return query(
-          collection(db, "companies", activeCompanyId, "demands"),
+          collection(db, "companies", currentCompany.id, "demands"),
           orderBy("timestamp", "desc")
         );
       }
-      
-      // 2. Modo Pessoal (Fallback para dados legados)
+
+      // MODO PESSOAL (Fallback): Se não tiver empresa, busca no usuário
       return query(
         collection(db, "users", user.uid, "demands"),
         orderBy("timestamp", "desc")
@@ -55,7 +56,7 @@ export default function HistoryPage() {
       console.error("Erro na query:", err);
       return null;
     }
-  }, [db, user?.uid, activeCompanyId]);
+  }, [db, user?.uid, currentCompany?.id]); // <--- Adicionar dependência da empresa
 
   const { data, isLoading } = useCollection(demandsQuery);
   const demands = (data as Demand[]) || [];
@@ -90,18 +91,10 @@ export default function HistoryPage() {
     });
   }
 
-  // 4. Formatador de Data (Suporta ISO string e Firestore Timestamp)
-  const formatDate = (timestamp?: string | { seconds: number }) => {
-    if (!timestamp) return "Data desconhecida";
-    
-    let date: Date;
-    if (typeof timestamp === 'string') {
-      date = new Date(timestamp);
-    } else {
-      date = new Date(timestamp.seconds * 1000);
-    }
-
-    return date.toLocaleString('pt-BR', {
+  // 4. Formatador de Data
+  const formatDate = (seconds?: number) => {
+    if (!seconds) return "Data desconhecida";
+    return new Date(seconds * 1000).toLocaleString('pt-BR', {
       day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
     });
   }
@@ -114,7 +107,10 @@ export default function HistoryPage() {
         <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
           <div className="flex items-center gap-2">
             <SidebarTrigger />
-            <h1 className="text-lg font-bold tracking-tight">Histórico de Atendimentos</h1>
+            <h1 className="text-lg font-bold tracking-tight">
+              {/* Mostra o contexto atual no título */}
+              Histórico {currentCompany ? `(${currentCompany.name})` : "(Pessoal)"}
+            </h1>
           </div>
           <Button asChild size="sm" variant="default">
              <Link href="/demands/new">Novo Registro</Link>
@@ -158,7 +154,7 @@ export default function HistoryPage() {
               // Empty State
               <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/10">
                 <FileText className="w-10 h-10 mb-4 opacity-20" />
-                <p>Nenhum registro encontrado.</p>
+                <p>Nenhum registro encontrado {currentCompany ? `em ${currentCompany.name}` : "no seu histórico pessoal"}.</p>
                 {search && <Button variant="link" onClick={() => setSearch("")}>Limpar busca</Button>}
               </div>
             ) : (
@@ -174,7 +170,7 @@ export default function HistoryPage() {
                           </Badge>
                           <span className="flex items-center text-xs text-muted-foreground gap-1">
                             <Clock className="w-3 h-3" />
-                            {formatDate(demand.timestamp)}
+                            {formatDate(demand.timestamp?.seconds)}
                           </span>
                         </div>
                         <CardTitle className="text-base font-semibold leading-tight pt-1">
