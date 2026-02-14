@@ -3,12 +3,13 @@ import { Inter } from "next/font/google";
 import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { FirebaseClientProvider } from "@/firebase/client-provider";
+import { AuthInitializer } from "@/components/auth-initializer";
 
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "PlantãoAI",
-  description: "Gestão inteligente de escalas e chamados",
+  title: "PlantãoAI - Gestão de Demandas",
+  description: "Sistema inteligente de gestão de plantões e demandas de TI",
 };
 
 export default function RootLayout({
@@ -20,7 +21,9 @@ export default function RootLayout({
     <html lang="pt-BR">
       <body className={inter.className}>
         <FirebaseClientProvider>
-          {children}
+          <AuthInitializer>
+            {children}
+          </AuthInitializer>
         </FirebaseClientProvider>
         <Toaster />
       </body>
