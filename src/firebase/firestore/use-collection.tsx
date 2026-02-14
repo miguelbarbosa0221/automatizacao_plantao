@@ -9,7 +9,6 @@ import {
   QuerySnapshot,
   CollectionReference,
 } from 'firebase/firestore';
-import { getAuth } from 'firebase/auth'; // Adicionado para verificação de usuario
 import { errorEmitter } from '@/firebase/error-emitter';
 import { FirestorePermissionError } from '@/firebase/errors';
 
@@ -66,7 +65,6 @@ export function useCollection<T = any>(
     const unsubscribe = onSnapshot(
       memoizedTargetRefOrQuery,
       (snapshot: QuerySnapshot<DocumentData>) => {
-        // --- LÓGICA DE INCLUSÃO: Mapeamento otimizado ---
         const results = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...(doc.data() as T),
@@ -77,48 +75,43 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (serverError: FirestoreError) => {
-        // Extração do path (mantido do original pois é útil para debug)
-        const path: string =
-          memoizedTargetRefOrQuery.type === 'collection'
+        // Tenta identificar o caminho para fins de debug
+        let path = 'unknown';
+        try {
+           path = memoizedTargetRefOrQuery.type === 'collection'
             ? (memoizedTargetRefOrQuery as CollectionReference).path
             : (memoizedTargetRefOrQuery as unknown as InternalQuery)._query.path.canonicalString();
+        } catch (e) {
+           console.warn("Could not extract path from query", e);
+        }
 
-        // --- LÓGICA DE INCLUSÃO: Tratamento de Permissão ---
-        
-        // Se o erro for de permissão, tratamos com cuidado para não causar loop de redirecionamento/erro
+        // --- CORREÇÃO DO PISCA-PISCA ---
+        // Se o erro for de permissão (permission-denied), apenas paramos o loading e logamos.
+        // NÃO emitimos o erro globalmente, pois isso causa o loop de re-renderização.
         if (serverError.code === 'permission-denied') {
-          console.warn(`Aguardando permissões ou acesso negado em: ${path}`);
+          console.warn(`[Auto-Silenced] Permissão negada em: ${path}. Aguardando autenticação ou correção de regras.`);
           setIsLoading(false);
-          
-          // Verificamos se o usuário está logado antes de emitir o erro global
-          const auth = getAuth();
-          if (auth.currentUser) {
-             const contextualError = new FirestorePermissionError({
-                operation: 'list',
-                path,
-             });
-             setError(contextualError);
-             errorEmitter.emit('permission-error', contextualError);
-          }
-          // Se não houver currentUser, apenas paramos o loading e não emitimos erro
-          // para evitar conflito durante o processo de logout/login
+          // Define o erro localmente para que o componente da UI saiba que falhou, 
+          // mas sem disparar o crash global.
+          setError(serverError); 
           return;
         }
 
-        // Tratamento padrão para outros erros
+        // Para outros erros reais (falha de rede, índice faltando, etc), mantemos o log.
+        console.error(`Firestore Error at ${path}:`, serverError);
+        
         const contextualError = new FirestorePermissionError({
           operation: 'list',
           path,
         });
 
-        console.error("Firestore Error at path:", path, serverError);
-        
         setError(contextualError);
         setData(null);
         setIsLoading(false);
 
-        // Emit to the global listener to show a friendly toast
-        errorEmitter.emit('permission-error', contextualError);
+        // Opção: Se quiser que outros erros ainda notifiquem o app, descomente abaixo.
+        // Por segurança contra loops, deixei comentado.
+        // errorEmitter.emit('permission-error', contextualError);
       }
     );
 

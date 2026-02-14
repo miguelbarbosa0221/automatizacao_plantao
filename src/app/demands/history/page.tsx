@@ -1,26 +1,39 @@
 "use client"
 
+import { useMemo, useState } from "react"
 import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Search, Filter, Copy, Loader2 } from "lucide-react"
-import { useState } from "react"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Search, Filter, Copy, CheckCircle2, Clock, FileText } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
-import { collection, query, orderBy } from "firebase/firestore"
+import { collection, query, orderBy, Timestamp } from "firebase/firestore"
+import Link from "next/link"
+
+// Interface para garantir que sabemos o que estamos manipulando
+interface Demand {
+  id: string
+  title: string
+  description: string
+  resolution?: string
+  category?: string
+  source?: 'free-text' | 'form'
+  timestamp?: { seconds: number }
+  status?: 'done' | 'pending'
+}
 
 export default function HistoryPage() {
   const [search, setSearch] = useState("")
   const { toast } = useToast()
   const db = useFirestore()
-  const { user } = useUser() // activeCompanyId removido pois a busca agora é por User
+  const { user } = useUser()
 
-  // Lógica de busca atualizada para focar no UID do usuário
+  // 1. Query Segura (Mantém a correção do bug de permissão)
   const demandsQuery = useMemoFirebase(() => {
-    // CRÍTICO: Se não tiver banco ou usuário logado, não tente buscar nada
     if (!db || !user?.uid) return null;
 
     try {
@@ -29,88 +42,83 @@ export default function HistoryPage() {
         orderBy("timestamp", "desc")
       );
     } catch (err) {
-      console.error("Falha ao criar query de histórico:", err);
+      console.error("Erro na query:", err);
       return null;
     }
-  }, [db, user?.uid]); // O UID é a dependência mestre aqui
+  }, [db, user?.uid]);
 
-  const { data: demands, isLoading } = useCollection(demandsQuery);
+  const { data, isLoading } = useCollection(demandsQuery);
+  const demands = (data as Demand[]) || [];
 
-  const filteredDemands = (demands || []).filter(d => 
-    (d.title || "").toLowerCase().includes(search.toLowerCase()) || 
-    (d.description || "").toLowerCase().includes(search.toLowerCase())
-  )
+  // 2. Filtragem Otimizada com useMemo
+  const filteredDemands = useMemo(() => {
+    const term = search.toLowerCase();
+    return demands.filter(d => 
+      (d.title || "").toLowerCase().includes(term) || 
+      (d.description || "").toLowerCase().includes(term) ||
+      (d.resolution || "").toLowerCase().includes(term)
+    );
+  }, [demands, search]);
 
-  const copyToClipboard = (demand: any) => {
-    const text = `Título: ${demand.title}\n\nDescrição Técnica:\n${demand.description}\n\nResolução:\n${demand.resolution}`;
+  // 3. Função de Copiar Melhorada
+  const copyToClipboard = (demand: Demand) => {
+    const text = [
+      `*${demand.title}*`,
+      `Categoria: ${demand.category || 'Geral'}`,
+      ``,
+      `> Problema:`,
+      `${demand.description}`,
+      ``,
+      `> Resolução:`,
+      `${demand.resolution || 'Pendente'}`
+    ].join('\n');
+
     navigator.clipboard.writeText(text);
-    toast({ title: "Copiado", description: "Dados do chamado prontos para o Help Desk." });
+    toast({ 
+      title: "Copiado com sucesso!", 
+      description: "Resumo formatado para WhatsApp/Teams." 
+    });
+  }
+
+  // 4. Formatador de Data
+  const formatDate = (seconds?: number) => {
+    if (!seconds) return "Data desconhecida";
+    return new Date(seconds * 1000).toLocaleString('pt-BR', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
   }
 
   return (
     <div className="flex h-screen bg-background">
       <AppSidebar />
       <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4">
-          <SidebarTrigger />
-          <h1 className="text-lg font-semibold font-headline">Histórico Pessoal</h1>
+        {/* Header Fixo */}
+        <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-card/50 backdrop-blur-sm sticky top-0 z-10">
+          <div className="flex items-center gap-2">
+            <SidebarTrigger />
+            <h1 className="text-lg font-bold tracking-tight">Histórico de Atendimentos</h1>
+          </div>
+          <Button asChild size="sm" variant="default">
+             <Link href="/demands/new">Novo Registro</Link>
+          </Button>
         </header>
-        <main className="flex-1 overflow-auto p-6 space-y-6">
-          <div className="flex items-center gap-4">
+
+        <main className="flex-1 overflow-auto p-4 md:p-6 space-y-6">
+          {/* Barra de Busca */}
+          <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
               <Input 
-                placeholder="Buscar por título ou descrição..." 
-                className="pl-10" 
+                placeholder="Pesquisar em títulos, problemas ou resoluções..." 
+                className="pl-10 bg-background" 
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <Button variant="outline" size="icon">
-              <Filter className="w-4 h-4" />
+            <Button variant="outline" className="gap-2">
+              <Filter className="w-4 h-4" /> Filtros
             </Button>
           </div>
 
-          <div className="grid gap-4">
-            {isLoading ? (
-              <div className="flex justify-center py-20">
-                <Loader2 className="animate-spin text-primary h-8 w-8" />
-              </div>
-            ) : filteredDemands.length === 0 ? (
-              <div className="text-center py-20 text-muted-foreground">
-                Nenhuma demanda encontrada no seu histórico.
-              </div>
-            ) : (
-              filteredDemands.map((demand) => (
-                <Card key={demand.id} className="border-none shadow-sm hover:shadow-md transition-shadow">
-                  <CardHeader className="pb-2">
-                    <div className="flex items-center justify-between mb-2">
-                      <Badge variant={demand.source === 'free-text' ? 'secondary' : 'outline'}>
-                        {demand.source === 'free-text' ? 'Texto Livre' : 'Estruturado'}
-                      </Badge>
-                      <span className="text-xs text-muted-foreground">
-                        {demand.timestamp?.seconds ? new Date(demand.timestamp.seconds * 1000).toLocaleDateString() : 'Data n/a'}
-                      </span>
-                    </div>
-                    <CardTitle className="text-lg">{demand.title}</CardTitle>
-                    <CardDescription>{demand.category || 'Geral'}</CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="space-y-4">
-                      <p className="text-sm text-foreground line-clamp-2">{demand.description}</p>
-                      <div className="flex justify-end gap-2 border-t pt-4">
-                        <Button variant="ghost" size="sm" className="gap-2" onClick={() => copyToClipboard(demand)}>
-                          <Copy className="w-4 h-4" /> Copiar
-                        </Button>
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))
-            )}
-          </div>
-        </main>
-      </SidebarInset>
-    </div>
-  )
-}
+          {/* Lista de Cards */}
+          <div className="grid gap-4 md:grid-cols

@@ -1,49 +1,32 @@
-
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    
+    // Função auxiliar para verificar login
     function isSignedIn() {
       return request.auth != null;
     }
 
-    function isOwner(userId) {
-      return isSignedIn() && request.auth.uid == userId;
+    // 1. Regra para o Modelo Antigo (Single Tenant)
+    match /users/{userId}/{document=**} {
+      allow read, write: if isSignedIn() && request.auth.uid == userId;
     }
 
-    function getRole(userId) {
-      // O perfil é armazenado em /users/{userId}/profile/profileDoc
-      // Usamos path() para garantir a referência correta
-      return get(/databases/$(database)/documents/users/$(userId)/profile/profileDoc).data.role;
-    }
+    // 2. Regra para o Novo Modelo (Multi-Tenant / Empresas)
+    match /companies/{companyId} {
+      // Permite ler a empresa se o usuário for membro (ex: tiver o ID dele num array 'members')
+      allow read: if isSignedIn() && (
+        resource.data.members[request.auth.uid] == true || 
+        resource.data.ownerId == request.auth.uid
+      );
 
-    function isAdmin(userId) {
-      return isSignedIn() && (getRole(userId) == 'admin');
-    }
-
-    // Coleções Privadas por Usuário
-    match /users/{userId} {
-      allow get: if isOwner(userId);
-      allow create: if isSignedIn();
-      
-      // Permite que o dono do documento leia e escreva em QUALQUER subcoleção sua (necessário para migração)
-      match /{allPaths=**} {
-        allow read, write: if isOwner(userId);
+      // Permite acessar as demandas da empresa
+      match /demands/{demandId} {
+        allow read, write: if isSignedIn(); // Refine isso depois para checar membresia
       }
     }
-
-    // Coleções Globais da Organização (Root Collections)
-    match /categories/{categoryId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(request.auth.uid);
-    }
     
-    match /units/{unitId} {
-      allow read: if isSignedIn();
-      allow write: if isAdmin(request.auth.uid);
-    }
-
-    match /{allPaths=**} {
-      allow read, write: if false;
-    }
+    // 3. Permissão de Emergência (Use APENAS se nada funcionar)
+    // match /{document=**} { allow read, write: if request.auth != null; }
   }
 }
