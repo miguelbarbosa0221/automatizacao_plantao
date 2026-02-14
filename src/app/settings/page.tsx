@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
-import { SidebarInset, SidebarTrigger } from "@/components/ui/sidebar";
+import { SidebarInset, SidebarTrigger, SidebarProvider } from "@/components/ui/sidebar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -10,8 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trash2, Plus, Building2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { useUser } from "@/firebase";
-import { ConfigService, AppConfig } from "@/lib/config-store";
+import { useUser, useFirestore } from "@/firebase";
+import { collection, getDocs, doc, setDoc, deleteDoc } from "firebase/firestore";
+
+interface AppConfig {
+  categories: string[];
+  units: string[];
+  items: string[];
+}
 
 const DEFAULT_CONFIG: AppConfig = {
   categories: ["Hardware", "Software", "Rede", "Impressora", "Outros"],
@@ -20,7 +26,8 @@ const DEFAULT_CONFIG: AppConfig = {
 };
 
 export default function SettingsPage() {
-  const { profile, activeCompanyId } = useUser();
+  const { activeCompanyId, profile } = useUser();
+  const db = useFirestore();
   const { toast } = useToast();
   
   const [config, setConfig] = useState<AppConfig | null>(null);
@@ -30,170 +37,224 @@ export default function SettingsPage() {
   const [newUnit, setNewUnit] = useState("");
   const [newItem, setNewItem] = useState("");
 
-  const currentCompany = useMemo(() => {
-    return profile?.companies?.find((c: any) => c.id === activeCompanyId);
-  }, [profile, activeCompanyId]);
+  const currentCompany = profile?.companies?.find((c: any) => c.id === activeCompanyId);
 
   useEffect(() => {
-    if (activeCompanyId) {
+    if (activeCompanyId && db) {
       loadData();
     }
-  }, [activeCompanyId]);
+  }, [activeCompanyId, db]);
 
   async function loadData() {
-    if (!activeCompanyId) return;
+    if (!activeCompanyId || !db) return;
     setIsLoading(true);
     try {
-      const data = await ConfigService.loadConfig(activeCompanyId);
-      if (!data || (!data.categories?.length && !data.units?.length)) {
-          setConfig(DEFAULT_CONFIG);
-      } else {
-          setConfig(data);
+      // Carregar categorias
+      const categoriesRef = collection(db, "companies", activeCompanyId, "categories");
+      const categoriesSnap = await getDocs(categoriesRef);
+      const categories = categoriesSnap.docs.map(d => d.data().name as string);
+
+      // Carregar unidades
+      const unitsRef = collection(db, "companies", activeCompanyId, "units");
+      const unitsSnap = await getDocs(unitsRef);
+      const units = unitsSnap.docs.map(d => d.data().name as string);
+
+      // Por enquanto, items virá do default
+      const items = DEFAULT_CONFIG.items;
+
+      setConfig({ categories, units, items });
+      
+      if (categories.length === 0 && units.length === 0) {
+        toast({ 
+          title: "Configurações vazias", 
+          description: "Use 'Restaurar Padrões' para popular os dados iniciais.",
+          variant: "default"
+        });
       }
-    } catch (e) {
+    } catch (e: any) {
       console.error("Erro ao carregar:", e);
-      toast({ variant: "destructive", title: "Erro ao carregar dados." });
-    } finally {
-      setIsLoading(false);
+      toast({ 
+        variant: "destructive", 
+        title: "Erro ao carregar dados",
+        description: e.message
+      });
+      setConfig(DEFAULT_CONFIG);
     }
+    setIsLoading(false);
   }
 
   const handleAdd = async (field: keyof AppConfig, value: string, setValue: (s: string) => void) => {
-    if (!value.trim() || !activeCompanyId) return;
+    if (!value.trim() || !activeCompanyId || !db) return;
     
     try {
-      const safeConfig = config || DEFAULT_CONFIG;
-      const currentList = safeConfig[field] || [];
-      const updatedConfig = { ...safeConfig, [field]: [...currentList, value] } as AppConfig;
+      if (field === "categories") {
+        const catId = `cat-${Date.now()}`;
+        await setDoc(doc(db, "companies", activeCompanyId, "categories", catId), {
+          id: catId,
+          name: value,
+          active: true,
+          subcategories: []
+        });
+      } else if (field === "units") {
+        const unitId = `unit-${Date.now()}`;
+        await setDoc(doc(db, "companies", activeCompanyId, "units", unitId), {
+          id: unitId,
+          name: value,
+          active: true,
+          sectors: []
+        });
+      }
       
-      setConfig(updatedConfig);
-      await ConfigService.addItem(activeCompanyId, field, value);
-      setValue(""); 
+      setValue("");
+      await loadData();
       toast({ title: "Item adicionado!" });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      loadData();
-      toast({ variant: "destructive", title: "Erro ao salvar." });
+      toast({ variant: "destructive", title: "Erro ao salvar.", description: error.message });
     }
   };
 
   const handleRemove = async (field: keyof AppConfig, value: string) => {
-    if (!activeCompanyId || !config) return;
+    if (!activeCompanyId || !db) return;
 
     try {
-      const updatedConfig = { 
-        ...config, 
-        [field]: config[field].filter(item => item !== value) 
-      } as AppConfig;
+      if (field === "categories") {
+        const categoriesRef = collection(db, "companies", activeCompanyId, "categories");
+        const snap = await getDocs(categoriesRef);
+        const docToDelete = snap.docs.find(d => d.data().name === value);
+        if (docToDelete) {
+          await deleteDoc(doc(db, "companies", activeCompanyId, "categories", docToDelete.id));
+        }
+      } else if (field === "units") {
+        const unitsRef = collection(db, "companies", activeCompanyId, "units");
+        const snap = await getDocs(unitsRef);
+        const docToDelete = snap.docs.find(d => d.data().name === value);
+        if (docToDelete) {
+          await deleteDoc(doc(db, "companies", activeCompanyId, "units", docToDelete.id));
+        }
+      }
 
-      setConfig(updatedConfig);
-      await ConfigService.removeItem(activeCompanyId, field, value);
+      await loadData();
       toast({ title: "Item removido." });
-    } catch (error) {
+    } catch (error: any) {
       console.error(error);
-      loadData();
-      toast({ variant: "destructive", title: "Erro ao remover ." });
+      toast({ variant: "destructive", title: "Erro ao remover.", description: error.message });
     }
   };
 
   const handleResetDefaults = async () => {
-    if (!activeCompanyId) return;
-    if (!confirm("Isso vai restaurar as categorias padrão. Tem certeza?")) return;
+    if (!activeCompanyId || !db) return;
+    if (!confirm("Isso vai restaurar as configurações padrão. Tem certeza?")) return;
 
     try {
       setIsLoading(true);
-      setConfig(DEFAULT_CONFIG);
-      for (const cat of DEFAULT_CONFIG.categories) await ConfigService.addItem(activeCompanyId, 'categories', cat);
-      for (const unit of DEFAULT_CONFIG.units) await ConfigService.addItem(activeCompanyId, 'units', unit);
-      for (const item of DEFAULT_CONFIG.items) await ConfigService.addItem(activeCompanyId, 'items', item);
-      toast({ title: "Padrões restaurados!" });
-    } catch (error) {
+      
+      // Criar categorias padrão
+      for (const cat of DEFAULT_CONFIG.categories) {
+        const catId = `cat-${cat.toLowerCase().replace(/\s/g, '-')}`;
+        await setDoc(doc(db, "companies", activeCompanyId, "categories", catId), {
+          id: catId,
+          name: cat,
+          active: true,
+          subcategories: []
+        });
+      }
+      
+      // Criar unidades padrão
+      for (const unit of DEFAULT_CONFIG.units) {
+        const unitId = `unit-${unit.toLowerCase().replace(/\s/g, '-')}`;
+        await setDoc(doc(db, "companies", activeCompanyId, "units", unitId), {
+          id: unitId,
+          name: unit,
+          active: true,
+          sectors: []
+        });
+      }
+      
+      await loadData();
+      toast({ title: "Padrões restaurados com sucesso!" });
+    } catch (error: any) {
       console.error(error);
-      toast({ variant: "destructive", title: "Erro ao restaurar." });
+      toast({ variant: "destructive", title: "Erro ao restaurar padrões.", description: error.message });
     } finally {
       setIsLoading(false);
     }
   };
 
-  if (!activeCompanyId) {
+  if (!currentCompany) {
     return (
-        <div className="flex h-screen bg-background items-center justify-center flex-col gap-4">
-            <p className="text-muted-foreground animate-pulse">Carregando dados da empresa...</p>
+      <SidebarProvider>
+        <div className="flex h-screen bg-background">
+          <AppSidebar />
+          <SidebarInset>
+            <div className="flex h-full items-center justify-center">
+              <p className="text-muted-foreground">Carregando empresa...</p>
+            </div>
+          </SidebarInset>
         </div>
+      </SidebarProvider>
     );
   }
 
   return (
-    <div className="flex h-screen bg-background">
-      <AppSidebar />
-      <SidebarInset>
-        <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 justify-between">
-          <div className="flex items-center gap-2">
-            <SidebarTrigger />
-            <h1 className="text-lg font-bold">Configurações</h1>
-          </div>
-          
-          <div className="flex items-center gap-2">
-             <Button variant="outline" size="sm" onClick={handleResetDefaults}>
-               <RotateCcw className="w-4 h-4 mr-2" /> Restaurar Padrões
-             </Button>
-             <div className="flex items-center gap-2 text-sm px-3 py-1 bg-muted rounded-md">
-                <Building2 className="w-4 h-4 text-primary" />
-                <span className="font-medium">{currentCompany?.name || "Empresa Ativa"}</span>
-             </div>
-          </div>
-        </header>
+    <SidebarProvider>
+      <div className="flex h-screen bg-background">
+        <AppSidebar />
+        <SidebarInset>
+          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 justify-between">
+            <div className="flex items-center gap-2">
+              <SidebarTrigger />
+              <h1 className="text-lg font-bold">Configurações do Catálogo</h1>
+            </div>
+            
+            <div className="flex items-center gap-2">
+               <Button variant="outline" size="sm" onClick={handleResetDefaults} disabled={isLoading}>
+                 <RotateCcw className="w-4 h-4 mr-2" /> Restaurar Padrões
+               </Button>
+               <div className="flex items-center gap-2 text-sm px-3 py-1 bg-muted rounded-md">
+                  <Building2 className="w-4 h-4 text-primary" />
+                  <span className="font-medium">{currentCompany.name}</span>
+               </div>
+            </div>
+          </header>
 
-        <main className="flex-1 overflow-auto p-4 md:p-6">
-          <Tabs defaultValue="categories" className="space-y-4">
-            <TabsList>
-              <TabsTrigger value="categories">Categorias</TabsTrigger>
-              <TabsTrigger value="units">Unidades / Setores</TabsTrigger>
-              <TabsTrigger value="items">Itens de Inventário</TabsTrigger>
-            </TabsList>
+          <main className="flex-1 overflow-auto p-4 md:p-6">
+            <Tabs defaultValue="categories" className="space-y-4">
+              <TabsList>
+                <TabsTrigger value="categories">Categorias</TabsTrigger>
+                <TabsTrigger value="units">Unidades</TabsTrigger>
+              </TabsList>
 
-            <TabsContent value="categories">
-              <ConfigCard 
-                title="Categorias de Chamado"
-                description={`Tipos de problemas para ${currentCompany?.name}.`}
-                items={config?.categories || []}
-                inputValue={newCategory}
-                onInputChange={setNewCategory}
-                onAdd={() => handleAdd('categories', newCategory, setNewCategory)}
-                onRemove={(val: string) => handleRemove('categories', val)}
-                isLoading={isLoading}
-              />
-            </TabsContent>
+              <TabsContent value="categories">
+                <ConfigCard 
+                  title="Categorias de Chamado"
+                  description={`Tipos de problemas para ${currentCompany.name}.`}
+                  items={config?.categories || []}
+                  inputValue={newCategory}
+                  onInputChange={setNewCategory}
+                  onAdd={() => handleAdd('categories', newCategory, setNewCategory)}
+                  onRemove={(val) => handleRemove('categories', val)}
+                  isLoading={isLoading}
+                />
+              </TabsContent>
 
-            <TabsContent value="units">
-              <ConfigCard 
-                title="Unidades e Setores"
-                description={`Locais da ${currentCompany?.name}.`}
-                items={config?.units || []}
-                inputValue={newUnit}
-                onInputChange={setNewUnit}
-                onAdd={() => handleAdd('units', newUnit, setNewUnit)}
-                onRemove={(val: string) => handleRemove('units', val)}
-                isLoading={isLoading}
-              />
-            </TabsContent>
-
-            <TabsContent value="items">
-              <ConfigCard 
-                title="Itens de Inventário"
-                description={`Equipamentos da ${currentCompany?.name}.`}
-                items={config?.items || []}
-                inputValue={newItem}
-                onInputChange={setNewItem} 
-                onAdd={() => handleAdd('items', newItem, setNewItem)}
-                onRemove={(val: string) => handleRemove('items', val)}
-                isLoading={isLoading}
-              />
-            </TabsContent>
-          </Tabs>
-        </main>
-      </SidebarInset>
-    </div>
+              <TabsContent value="units">
+                <ConfigCard 
+                  title="Unidades e Setores"
+                  description={`Locais da ${currentCompany.name}.`}
+                  items={config?.units || []}
+                  inputValue={newUnit}
+                  onInputChange={setNewUnit}
+                  onAdd={() => handleAdd('units', newUnit, setNewUnit)}
+                  onRemove={(val) => handleRemove('units', val)}
+                  isLoading={isLoading}
+                />
+              </TabsContent>
+            </Tabs>
+          </main>
+        </SidebarInset>
+      </div>
+    </SidebarProvider>
   );
 }
 
@@ -209,8 +270,9 @@ function ConfigCard({ title, description, items, inputValue, onInputChange, onAd
           <Input 
             placeholder="Adicionar novo..." 
             value={inputValue}
-            onChange={(e) => onInputChange(e.target.value)} 
+            onChange={(e) => onInputChange(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && onAdd()}
+            disabled={isLoading}
           />
           <Button onClick={onAdd} disabled={isLoading}>
             <Plus className="w-4 h-4 mr-2" /> Adicionar
@@ -222,7 +284,7 @@ function ConfigCard({ title, description, items, inputValue, onInputChange, onAd
             <p className="text-sm text-muted-foreground">Carregando...</p>
           ) : !items || items.length === 0 ? (
             <p className="text-sm text-muted-foreground italic">
-                Nenhum item encontrado. Tente clicar em "Restaurar Padrões".
+              Nenhum item cadastrado. Use "Restaurar Padrões" ou adicione manualmente.
             </p>
           ) : (
             items.map((item: string, idx: number) => (
