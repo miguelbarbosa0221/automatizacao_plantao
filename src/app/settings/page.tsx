@@ -92,7 +92,7 @@ export default function SettingsPage() {
     } catch (error) {
       console.error(error);
       loadData();
-      toast({ variant: "destructive", title: "Erro ao remover." });
+      toast({ variant: "destructive", title: "Erro ao remover ." });
     }
   };
 
