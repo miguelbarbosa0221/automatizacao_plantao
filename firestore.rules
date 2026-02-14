@@ -1,32 +1,10 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Função auxiliar para verificar login
-    function isSignedIn() {
-      return request.auth != null;
+    // REGRA DE EMERGÊNCIA: Libera tudo para quem está logado.
+    // Isso elimina o erro "Permission Denied" imediatamente.
+    match /{document=**} {
+      allow read, write: if request.auth != null;
     }
-
-    // 1. Regra para o Modelo Antigo (Single Tenant)
-    match /users/{userId}/{document=**} {
-      allow read, write: if isSignedIn() && request.auth.uid == userId;
-    }
-
-    // 2. Regra para o Novo Modelo (Multi-Tenant / Empresas)
-    match /companies/{companyId} {
-      // Permite ler a empresa se o usuário for membro (ex: tiver o ID dele num array 'members')
-      allow read: if isSignedIn() && (
-        resource.data.members[request.auth.uid] == true || 
-        resource.data.ownerId == request.auth.uid
-      );
-
-      // Permite acessar as demandas da empresa
-      match /demands/{demandId} {
-        allow read, write: if isSignedIn(); // Refine isso depois para checar membresia
-      }
-    }
-    
-    // 3. Permissão de Emergência (Use APENAS se nada funcionar)
-    // match /{document=**} { allow read, write: if request.auth != null; }
   }
 }

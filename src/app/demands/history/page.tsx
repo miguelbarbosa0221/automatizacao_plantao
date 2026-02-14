@@ -11,7 +11,7 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { Search, Filter, Copy, CheckCircle2, Clock, FileText } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
-import { collection, query, orderBy, Timestamp } from "firebase/firestore"
+import { collection, query, orderBy } from "firebase/firestore"
 import Link from "next/link"
 
 // Interface para garantir que sabemos o que estamos manipulando
@@ -120,5 +120,82 @@ export default function HistoryPage() {
             </Button>
           </div>
 
-          {/* Lista de Cards */}
-          <div className="grid gap-4 md:grid-cols
+          {/* Lista de Cards (Parte que estava cortada no seu código) */}
+          <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1 xl:grid-cols-2">
+            {isLoading ? (
+              // Loading State com Skeletons
+              Array.from({ length: 4 }).map((_, i) => (
+                <Card key={i} className="border shadow-sm">
+                  <CardHeader className="space-y-2">
+                    <Skeleton className="h-4 w-1/3" />
+                    <Skeleton className="h-6 w-3/4" />
+                  </CardHeader>
+                  <CardContent className="space-y-4">
+                    <Skeleton className="h-20 w-full" />
+                    <Skeleton className="h-8 w-24 ml-auto" />
+                  </CardContent>
+                </Card>
+              ))
+            ) : filteredDemands.length === 0 ? (
+              // Empty State
+              <div className="col-span-full flex flex-col items-center justify-center py-20 text-muted-foreground border-2 border-dashed rounded-lg bg-muted/10">
+                <FileText className="w-10 h-10 mb-4 opacity-20" />
+                <p>Nenhum registro encontrado.</p>
+                {search && <Button variant="link" onClick={() => setSearch("")}>Limpar busca</Button>}
+              </div>
+            ) : (
+              // Lista Real
+              filteredDemands.map((demand) => (
+                <Card key={demand.id} className="group flex flex-col border shadow-sm hover:shadow-md transition-all hover:border-primary/20">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-start justify-between gap-4">
+                      <div className="space-y-1">
+                        <div className="flex items-center gap-2">
+                          <Badge variant={demand.source === 'free-text' ? 'secondary' : 'outline'} className="text-[10px] uppercase tracking-wider font-semibold">
+                            {demand.category || 'Geral'}
+                          </Badge>
+                          <span className="flex items-center text-xs text-muted-foreground gap-1">
+                            <Clock className="w-3 h-3" />
+                            {formatDate(demand.timestamp?.seconds)}
+                          </span>
+                        </div>
+                        <CardTitle className="text-base font-semibold leading-tight pt-1">
+                          {demand.title}
+                        </CardTitle>
+                      </div>
+                      <Button variant="ghost" size="icon" className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity" onClick={() => copyToClipboard(demand)} title="Copiar Resumo">
+                        <Copy className="w-4 h-4 text-muted-foreground" />
+                      </Button>
+                    </div>
+                  </CardHeader>
+
+                  <CardContent className="flex-1 flex flex-col gap-4">
+                    {/* Descrição do Problema */}
+                    <div className="text-sm text-muted-foreground bg-muted/30 p-3 rounded-md border border-transparent group-hover:border-border/50 transition-colors">
+                      <p className="line-clamp-3">{demand.description}</p>
+                    </div>
+
+                    {/* Resolução (Destaque) */}
+                    <div className="mt-auto pt-2">
+                      <div className="flex items-start gap-2">
+                        <CheckCircle2 className={`w-4 h-4 mt-0.5 ${demand.resolution ? "text-green-500" : "text-yellow-500"}`} />
+                        <div className="flex-1">
+                          <p className="text-xs font-semibold text-foreground uppercase mb-1">
+                            Resolução Técnica
+                          </p>
+                          <p className="text-sm text-foreground/90 leading-relaxed">
+                            {demand.resolution || "Pendente de documentação..."}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))
+            )}
+          </div>
+        </main>
+      </SidebarInset>
+    </div>
+  )
+}
