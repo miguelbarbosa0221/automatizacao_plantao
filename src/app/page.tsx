@@ -4,26 +4,12 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { SidebarInset, SidebarTrigger, SidebarProvider } from "@/components/ui/sidebar"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase"
-import { collection, query, orderBy, limit } from "firebase/firestore"
-import { Loader2, PlusCircle, ClipboardList } from "lucide-react"
+import { useUser } from "@/firebase"
+import { Loader2, PlusCircle } from "lucide-react"
 import Link from "next/link"
-import { useMemo } from "react"
 
 export default function Home() {
   const { user, isUserLoading, activeCompanyId } = useUser();
-  const db = useFirestore();
-
-  const demandsQuery = useMemoFirebase(() => {
-    if (!db || !activeCompanyId) return null;
-    return query(
-      collection(db, "companies", activeCompanyId, "demands"),
-      orderBy("timestamp", "desc"),
-      limit(10)
-    );
-  }, [db, activeCompanyId]);
-
-  const { data: demands, isLoading } = useCollection(demandsQuery);
 
   if (isUserLoading) {
     return (
@@ -72,43 +58,13 @@ export default function Home() {
 
               <Card>
                 <CardHeader>
-                  <CardTitle className="text-sm font-medium">Demandas Recentes</CardTitle>
+                  <CardTitle className="text-sm font-medium">Status</CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <p className="text-2xl font-bold">{demands?.length || 0}</p>
+                  <p className="text-2xl font-bold text-green-500">Online</p>
                 </CardContent>
               </Card>
             </div>
-
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <ClipboardList className="w-5 h-5" />
-                  Últimas Demandas
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                {isLoading ? (
-                  <div className="flex justify-center py-8">
-                    <Loader2 className="animate-spin" />
-                  </div>
-                ) : demands && demands.length > 0 ? (
-                  <div className="space-y-2">
-                    {demands.map((demand: any) => (
-                      <div key={demand.id} className="p-3 border rounded">
-                        <p className="font-medium">{demand.title}</p>
-                        <p className="text-sm text-muted-foreground">{demand.category}</p>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <p className="text-center text-muted-foreground py-8">
-                    Nenhuma demanda cadastrada. 
-                    <Link href="/demands/new" className="text-primary ml-1">Criar primeira demanda</Link>
-                  </p>
-                )}
-              </CardContent>
-            </Card>
           </main>
         </SidebarInset>
       </div>
