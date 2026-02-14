@@ -1,5 +1,5 @@
-import { db } from "@/firebase/config";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
+import { initializeFirebase } from "@/firebase";
 
 export interface AppConfig {
   categories: string[];
@@ -13,8 +13,15 @@ const DEFAULT_CONFIG: AppConfig = {
   items: ["Computador", "Monitor", "Teclado", "Mouse", "Impressora", "Estabilizador"]
 };
 
+// Obter instância do Firestore
+const getDb = () => {
+  const { firestore } = initializeFirebase();
+  return firestore;
+};
+
 // Referência direta para as configurações DA EMPRESA
 const getCompanySettingsRef = (companyId: string) => {
+  const db = getDb();
   return doc(db, "companies", companyId, "settings", "general");
 };
 

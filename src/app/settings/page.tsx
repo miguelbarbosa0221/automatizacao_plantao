@@ -8,12 +8,12 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trash2, Plus, Building2, RotateCcw } from "lucide-react"; // Adicionei RotateCcw
+import { Trash2, Plus, Building2, RotateCcw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useCompany } from "@/context/company-context";
 import { ConfigService, AppConfig } from "@/lib/config-store";
 
-// Configuração Padrão para Reset
+// Configuração Padrão para Reset e Fallback Visual
 const DEFAULT_CONFIG: AppConfig = {
   categories: ["Hardware", "Software", "Rede", "Impressora", "Outros"],
   units: ["UTI", "Emergência", "Recepção", "Centro Cirúrgico", "Administrativo"],
@@ -37,41 +37,54 @@ export default function SettingsPage() {
     }
   }, [currentCompany]);
 
+  // Log para depuração: Verifique o console do navegador (F12)
+  useEffect(() => {
+    console.log("Estado atual da configuração:", config);
+  }, [config]);
+
   async function loadData() {
     if (!currentCompany?.id) return;
     setIsLoading(true);
-    console.log("Carregando configurações para empresa:", currentCompany.id);
     try {
+      console.log("Carregando configurações...");
       const data = await ConfigService.loadConfig(currentCompany.id);
-      console.log("Dados carregados:", data);
-      setConfig(data);
+      
+      // GARANTIA EXTRA: Se vier vazio, forçamos o default visualmente também
+      if (!data || (!data.categories?.length && !data.units?.length)) {
+          console.warn("Dados vieram vazios, usando default visual.");
+          setConfig(DEFAULT_CONFIG);
+      } else {
+          setConfig(data);
+      }
     } catch (e) {
       console.error("Erro ao carregar:", e);
       toast({ variant: "destructive", title: "Erro ao carregar dados." });
+    } finally {
+      setIsLoading(false);
     }
-    setIsLoading(false);
   }
 
-  // Função para adicionar itens
   const handleAdd = async (field: keyof AppConfig, value: string, setValue: (s: string) => void) => {
     if (!value.trim() || !currentCompany?.id) return;
     
     try {
-      const currentList = config ? config[field] : [];
-      const updatedConfig = { ...config, [field]: [...currentList, value] } as AppConfig;
+      // Proteção contra config null
+      const safeConfig = config || DEFAULT_CONFIG;
+      const currentList = safeConfig[field] || [];
       
-      setConfig(updatedConfig); // Otimista
+      const updatedConfig = { ...safeConfig, [field]: [...currentList, value] } as AppConfig;
+      
+      setConfig(updatedConfig); // Atualização Otimista
       await ConfigService.addItem(currentCompany.id, field, value);
       setValue(""); 
       toast({ title: "Item adicionado!" });
     } catch (error) {
       console.error(error);
-      loadData();
+      loadData(); // Reverte em caso de erro
       toast({ variant: "destructive", title: "Erro ao salvar." });
     }
   };
 
-  // Função para remover itens
   const handleRemove = async (field: keyof AppConfig, value: string) => {
     if (!currentCompany?.id || !config) return;
 
@@ -81,7 +94,7 @@ export default function SettingsPage() {
         [field]: config[field].filter(item => item !== value) 
       } as AppConfig;
 
-      setConfig(updatedConfig); // Otimista
+      setConfig(updatedConfig); // Atualização Otimista
       await ConfigService.removeItem(currentCompany.id, field, value);
       toast({ title: "Item removido." });
     } catch (error) {
@@ -91,29 +104,25 @@ export default function SettingsPage() {
     }
   };
 
-  // Função de Reset de Emergência
   const handleResetDefaults = async () => {
     if (!currentCompany?.id) return;
-    if (!confirm("Isso vai apagar as configurações atuais desta empresa e restaurar o padrão. Tem certeza?")) return;
+    if (!confirm("Isso vai restaurar as categorias padrão. Tem certeza?")) return;
 
     try {
       setIsLoading(true);
-      // Aqui vamos forçar a re-criação de cada item um por um ou salvar o objeto inteiro se o seu service permitir.
-      // Como o service usa arrayUnion, vamos fazer um "hack" rápido: salvar itens padrão um a um.
-      // Melhor ainda: Vamos instruir o usuário a usar o ConfigService corretamente se ele tivesse um método 'saveAll', mas como não tem, vamos simular recarregando o padrão.
+      // Força visual imediata
+      setConfig(DEFAULT_CONFIG);
       
-      // Na verdade, o loadConfig JÁ FAZ ISSO se o doc não existir.
-      // Se o doc existe e está vazio, vamos tentar popular manualmente.
-      
+      // Tenta salvar no banco item a item (já que é arrayUnion)
+      // Nota: Idealmente seu ConfigService teria um 'saveAll' ou 'reset', mas isso resolve por hora
       for (const cat of DEFAULT_CONFIG.categories) await ConfigService.addItem(currentCompany.id, 'categories', cat);
       for (const unit of DEFAULT_CONFIG.units) await ConfigService.addItem(currentCompany.id, 'units', unit);
       for (const item of DEFAULT_CONFIG.items) await ConfigService.addItem(currentCompany.id, 'items', item);
       
-      await loadData();
-      toast({ title: "Padrões restaurados com sucesso!" });
+      toast({ title: "Padrões restaurados!" });
     } catch (error) {
       console.error(error);
-      toast({ variant: "destructive", title: "Erro ao restaurar padrões." });
+      toast({ variant: "destructive", title: "Erro ao restaurar." });
     } finally {
       setIsLoading(false);
     }
@@ -123,7 +132,6 @@ export default function SettingsPage() {
     return (
         <div className="flex h-screen bg-background items-center justify-center flex-col gap-4">
             <p className="text-muted-foreground animate-pulse">Carregando dados da empresa...</p>
-            <p className="text-xs text-muted-foreground">Se demorar, verifique se você selecionou uma empresa.</p>
         </div>
     );
   }
@@ -165,7 +173,7 @@ export default function SettingsPage() {
                 inputValue={newCategory}
                 onInputChange={setNewCategory}
                 onAdd={() => handleAdd('categories', newCategory, setNewCategory)}
-                onRemove={(val) => handleRemove('categories', val)}
+                onRemove={(val: string) => handleRemove('categories', val)}
                 isLoading={isLoading}
               />
             </TabsContent>
@@ -178,7 +186,7 @@ export default function SettingsPage() {
                 inputValue={newUnit}
                 onInputChange={setNewUnit}
                 onAdd={() => handleAdd('units', newUnit, setNewUnit)}
-                onRemove={(val) => handleRemove('units', val)}
+                onRemove={(val: string) => handleRemove('units', val)}
                 isLoading={isLoading}
               />
             </TabsContent>
@@ -189,9 +197,9 @@ export default function SettingsPage() {
                 description={`Equipamentos da ${currentCompany.name}.`}
                 items={config?.items || []}
                 inputValue={newItem}
-                onInputChange={newItem} // Correção aqui: estava setNewItem
+                onInputChange={setNewItem} 
                 onAdd={() => handleAdd('items', newItem, setNewItem)}
-                onRemove={(val) => handleRemove('items', val)}
+                onRemove={(val: string) => handleRemove('items', val)}
                 isLoading={isLoading}
               />
             </TabsContent>
@@ -202,6 +210,7 @@ export default function SettingsPage() {
   );
 }
 
+// Componente Auxiliar
 function ConfigCard({ title, description, items, inputValue, onInputChange, onAdd, onRemove, isLoading }: any) {
   return (
     <Card>
@@ -214,7 +223,7 @@ function ConfigCard({ title, description, items, inputValue, onInputChange, onAd
           <Input 
             placeholder="Adicionar novo..." 
             value={inputValue}
-            onChange={(e) => onInputChange(e.target.value)} // Garante que recebe o evento
+            onChange={(e) => onInputChange(e.target.value)} 
             onKeyDown={(e) => e.key === 'Enter' && onAdd()}
           />
           <Button onClick={onAdd} disabled={isLoading}>
@@ -226,7 +235,9 @@ function ConfigCard({ title, description, items, inputValue, onInputChange, onAd
           {isLoading ? (
             <p className="text-sm text-muted-foreground">Carregando...</p>
           ) : !items || items.length === 0 ? (
-            <p className="text-sm text-muted-foreground italic">Nenhum item cadastrado. Use o botão "Restaurar Padrões" se necessário.</p>
+            <p className="text-sm text-muted-foreground italic">
+                Nenhum item encontrado. Tente clicar em "Restaurar Padrões".
+            </p>
           ) : (
             items.map((item: string, idx: number) => (
               <Badge key={idx} variant="secondary" className="pl-3 pr-1 py-1 flex items-center gap-2 text-sm">
