@@ -1,3 +1,4 @@
+
 "use client"
 
 import { useMemo, useState } from "react"
@@ -22,7 +23,7 @@ interface Demand {
   resolution?: string
   category?: string
   source?: 'free-text' | 'form'
-  timestamp?: { seconds: number }
+  timestamp?: string | { seconds: number }
   status?: 'done' | 'pending'
 }
 
@@ -30,13 +31,22 @@ export default function HistoryPage() {
   const [search, setSearch] = useState("")
   const { toast } = useToast()
   const db = useFirestore()
-  const { user } = useUser()
+  const { user, activeCompanyId } = useUser()
 
-  // 1. Query Segura (Mantém a correção do bug de permissão)
+  // 1. Query Segura (Arquitetura Multi-Tenant)
   const demandsQuery = useMemoFirebase(() => {
     if (!db || !user?.uid) return null;
 
     try {
+      // 1. Modo Empresa (Prioritário no novo sistema)
+      if (activeCompanyId) {
+        return query(
+          collection(db, "companies", activeCompanyId, "demands"),
+          orderBy("timestamp", "desc")
+        );
+      }
+      
+      // 2. Modo Pessoal (Fallback para dados legados)
       return query(
         collection(db, "users", user.uid, "demands"),
         orderBy("timestamp", "desc")
@@ -45,7 +55,7 @@ export default function HistoryPage() {
       console.error("Erro na query:", err);
       return null;
     }
-  }, [db, user?.uid]);
+  }, [db, user?.uid, activeCompanyId]);
 
   const { data, isLoading } = useCollection(demandsQuery);
   const demands = (data as Demand[]) || [];
@@ -80,10 +90,18 @@ export default function HistoryPage() {
     });
   }
 
-  // 4. Formatador de Data
-  const formatDate = (seconds?: number) => {
-    if (!seconds) return "Data desconhecida";
-    return new Date(seconds * 1000).toLocaleString('pt-BR', {
+  // 4. Formatador de Data (Suporta ISO string e Firestore Timestamp)
+  const formatDate = (timestamp?: string | { seconds: number }) => {
+    if (!timestamp) return "Data desconhecida";
+    
+    let date: Date;
+    if (typeof timestamp === 'string') {
+      date = new Date(timestamp);
+    } else {
+      date = new Date(timestamp.seconds * 1000);
+    }
+
+    return date.toLocaleString('pt-BR', {
       day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
     });
   }
@@ -120,7 +138,7 @@ export default function HistoryPage() {
             </Button>
           </div>
 
-          {/* Lista de Cards (Parte que estava cortada no seu código) */}
+          {/* Lista de Cards */}
           <div className="grid gap-4 md:grid-cols-1 lg:grid-cols-1 xl:grid-cols-2">
             {isLoading ? (
               // Loading State com Skeletons
@@ -156,7 +174,7 @@ export default function HistoryPage() {
                           </Badge>
                           <span className="flex items-center text-xs text-muted-foreground gap-1">
                             <Clock className="w-3 h-3" />
-                            {formatDate(demand.timestamp?.seconds)}
+                            {formatDate(demand.timestamp)}
                           </span>
                         </div>
                         <CardTitle className="text-base font-semibold leading-tight pt-1">

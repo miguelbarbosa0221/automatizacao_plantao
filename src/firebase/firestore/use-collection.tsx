@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -39,7 +40,6 @@ export interface InternalQuery extends Query<DocumentData> {
 
 /**
  * React hook to subscribe to a Firestore collection or query in real-time.
- * Handles nullable references/queries.
  */
 export function useCollection<T = any>(
    memoizedTargetRefOrQuery: ((CollectionReference<DocumentData> | Query<DocumentData>) & {__memo?: boolean})  | null | undefined,
@@ -75,7 +75,6 @@ export function useCollection<T = any>(
         setIsLoading(false);
       },
       (serverError: FirestoreError) => {
-        // Tenta identificar o caminho para fins de debug
         let path = 'unknown';
         try {
            path = memoizedTargetRefOrQuery.type === 'collection'
@@ -85,21 +84,6 @@ export function useCollection<T = any>(
            console.warn("Could not extract path from query", e);
         }
 
-        // --- CORREÇÃO DO PISCA-PISCA ---
-        // Se o erro for de permissão (permission-denied), apenas paramos o loading e logamos.
-        // NÃO emitimos o erro globalmente, pois isso causa o loop de re-renderização.
-        if (serverError.code === 'permission-denied') {
-          console.warn(`[Auto-Silenced] Permissão negada em: ${path}. Aguardando autenticação ou correção de regras.`);
-          setIsLoading(false);
-          // Define o erro localmente para que o componente da UI saiba que falhou, 
-          // mas sem disparar o crash global.
-          setError(serverError); 
-          return;
-        }
-
-        // Para outros erros reais (falha de rede, índice faltando, etc), mantemos o log.
-        console.error(`Firestore Error at ${path}:`, serverError);
-        
         const contextualError = new FirestorePermissionError({
           operation: 'list',
           path,
@@ -109,9 +93,9 @@ export function useCollection<T = any>(
         setData(null);
         setIsLoading(false);
 
-        // Opção: Se quiser que outros erros ainda notifiquem o app, descomente abaixo.
-        // Por segurança contra loops, deixei comentado.
-        // errorEmitter.emit('permission-error', contextualError);
+        // Reativado: O erro agora é emitido para o FirebaseErrorListener global.
+        // O listener foi refatorado para exibir um Toast em vez de quebrar a aplicação.
+        errorEmitter.emit('permission-error', contextualError);
       }
     );
 
