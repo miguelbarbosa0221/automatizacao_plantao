@@ -34,7 +34,8 @@ export default function LoginPage() {
     try {
       await signInWithEmailAndPassword(auth, email, password);
       toast({ title: "Login realizado com sucesso!" });
-      router.push('/');
+      // CORREÇÃO: Redirecionar para /demands em vez de / (evita loop)
+      router.push('/demands');
     } catch (error: any) {
       setIsLoading(false);
       let message = "Verifique suas credenciais.";

@@ -22,15 +22,18 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted || isUserLoading) return;
 
-    // Se não estiver logado e não estiver na página de login, redireciona
-    if (!user && pathname !== '/login') {
-      router.push('/login');
+    // CORREÇÃO: Verifica se está em página de login (/ ou /login)
+    const isLoginPage = pathname === '/' || pathname === '/login';
+
+    // Se não estiver logado e não estiver na página de login, redireciona para /
+    if (!user && !isLoginPage) {
+      router.push('/');
       return;
     }
 
-    // Se estiver logado e estiver na página de login, redireciona para home
-    if (user && pathname === '/login') {
-      router.push('/');
+    // CORREÇÃO: Se estiver logado e estiver na página de login, redireciona para demands
+    if (user && isLoginPage) {
+      router.push('/demands');
       return;
     }
 
@@ -68,9 +71,11 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
     }
   }, [user, isUserLoading, db, profile, pathname, router, isMounted, isInitializingProfile]);
 
+  // CORREÇÃO: Só mostra loading se estiver logado e inicializando
+  // (não mostra loading na página de login para não logados)
   if (!isMounted) return null;
 
-  // Mostrar loading enquanto verifica autenticação ou inicializa perfil
+  // Mostrar loading apenas se estiver logado e ainda carregando dados
   if (user && (isUserLoading || isInitializingProfile || !profile)) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
