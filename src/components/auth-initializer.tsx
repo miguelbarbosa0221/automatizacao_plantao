@@ -31,9 +31,9 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    // CORREÇÃO: Se estiver logado e estiver na página de login, redireciona para demands
+    // CORREÇÃO: Se estiver logado e estiver na página de login, redireciona para /demands/history
     if (user && isLoginPage) {
-      router.push('/demands');
+      router.push('/demands/history');
       return;
     }
 
@@ -71,8 +71,6 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
     }
   }, [user, isUserLoading, db, profile, pathname, router, isMounted, isInitializingProfile]);
 
-  // CORREÇÃO: Só mostra loading se estiver logado e inicializando
-  // (não mostra loading na página de login para não logados)
   if (!isMounted) return null;
 
   // Mostrar loading apenas se estiver logado e ainda carregando dados
