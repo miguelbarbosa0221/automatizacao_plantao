@@ -4,11 +4,10 @@
 import { useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarTrigger, SidebarProvider } from "@/components/ui/sidebar";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Trash2, Plus, Building2, Layers, Tag, ChevronRight, Info, AlertCircle, Pencil, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -105,7 +104,6 @@ export default function SettingsPage() {
     const collectionName = COLLECTION_MAP[type];
     if (!user?.uid || !db || !collectionName) return;
 
-    // Verificar dependências antes de excluir
     const hasChildren = 
       (type === 'unit' && sectors.data?.some(s => s.parentId === id)) ||
       (type === 'category' && subcategories.data?.some(s => s.parentId === id)) ||
@@ -184,9 +182,9 @@ export default function SettingsPage() {
 
   return (
     <SidebarProvider>
-      <div className="flex h-screen bg-background">
+      <div className="flex h-screen bg-background overflow-hidden">
         <AppSidebar />
-        <SidebarInset>
+        <SidebarInset className="flex flex-col overflow-hidden">
           <header className="flex h-16 shrink-0 items-center justify-between border-b px-6 bg-card">
             <div className="flex items-center gap-2">
               <SidebarTrigger />
@@ -195,8 +193,8 @@ export default function SettingsPage() {
           </header>
 
           <main className="flex-1 p-6 overflow-hidden flex flex-col gap-6 bg-slate-50/40">
-            <Tabs defaultValue="organizational" className="w-full flex-1 flex flex-col">
-              <TabsList className="grid w-full max-w-md grid-cols-2 mb-4">
+            <Tabs defaultValue="organizational" className="w-full flex-1 flex flex-col min-h-0">
+              <TabsList className="grid w-full max-w-md grid-cols-2 mb-4 shrink-0">
                 <TabsTrigger value="organizational" className="gap-2">
                   <Building2 className="w-4 h-4" /> Estrutura Organizacional
                 </TabsTrigger>
@@ -205,10 +203,10 @@ export default function SettingsPage() {
                 </TabsTrigger>
               </TabsList>
 
-              <TabsContent value="organizational" className="flex-1 mt-0">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
+              <TabsContent value="organizational" className="flex-1 mt-0 min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full min-h-0">
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3 bg-muted/20 border-b">
+                    <CardHeader className="pb-3 bg-muted/20 border-b shrink-0">
                       <CardTitle className="text-sm font-bold uppercase">1. Unidades</CardTitle>
                       <div className="flex gap-2 mt-2">
                         <Input 
@@ -240,7 +238,7 @@ export default function SettingsPage() {
                   </Card>
 
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3 bg-muted/20 border-b">
+                    <CardHeader className="pb-3 bg-muted/20 border-b shrink-0">
                       <CardTitle className="text-sm font-bold uppercase">2. Setores</CardTitle>
                       {selectedUnitId ? (
                         <div className="flex gap-2 mt-2">
@@ -253,7 +251,7 @@ export default function SettingsPage() {
                           />
                           <Button size="sm" onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading}><Plus className="w-4 h-4" /></Button>
                         </div>
-                      ) : <div className="h-9 mt-2 text-xs text-muted-foreground italic flex items-center gap-2"><Info className="w-3 h-3" /> Selecione uma unidade para adicionar setores.</div>}
+                      ) : <div className="h-9 mt-2 text-xs text-muted-foreground italic flex items-center gap-2"><Info className="w-3 h-3" /> Selecione uma unidade.</div>}
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       {selectedUnitId ? (
@@ -275,10 +273,10 @@ export default function SettingsPage() {
                 </div>
               </TabsContent>
 
-              <TabsContent value="taxonomy" className="flex-1 mt-0">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+              <TabsContent value="taxonomy" className="flex-1 mt-0 min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full min-h-0">
                   <Card className="flex flex-col h-full overflow-hidden border-r">
-                    <CardHeader className="pb-3 border-b bg-muted/20">
+                    <CardHeader className="pb-3 border-b bg-muted/20 shrink-0">
                       <CardTitle className="text-xs font-bold uppercase">1. Categorias</CardTitle>
                       <div className="flex gap-2 mt-2">
                         <Input 
@@ -309,7 +307,7 @@ export default function SettingsPage() {
                   </Card>
 
                   <Card className="flex flex-col h-full overflow-hidden border-r">
-                    <CardHeader className="pb-3 border-b bg-muted/20">
+                    <CardHeader className="pb-3 border-b bg-muted/20 shrink-0">
                       <CardTitle className="text-xs font-bold uppercase">2. Subcategorias</CardTitle>
                       {selectedCategoryId ? (
                         <div className="flex gap-2 mt-2">
@@ -348,7 +346,7 @@ export default function SettingsPage() {
                   </Card>
 
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3 border-b bg-muted/20">
+                    <CardHeader className="pb-3 border-b bg-muted/20 shrink-0">
                       <CardTitle className="text-xs font-bold uppercase">3. Itens (Ação)</CardTitle>
                       {selectedSubcategoryId ? (
                         <div className="flex gap-2 mt-2">
@@ -382,11 +380,11 @@ export default function SettingsPage() {
               </TabsContent>
             </Tabs>
             
-            <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 text-amber-800 text-[10px]">
+            <div className="shrink-0 bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 text-amber-800 text-[10px]">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <p>
-                <strong>Gestão Hierárquica:</strong> Você pode adicionar, remover e renomear qualquer item clicando no ícone do lápis. 
-                Ao renomear uma Categoria, seus vínculos com Subcategorias e Itens permanecem intactos.
+                <strong>Gestão Hierárquica:</strong> Use áreas de rolagem independentes para navegar no seu catálogo. 
+                Os botões de ação (editar/excluir) aparecem ao passar o mouse ou selecionar um item.
               </p>
             </div>
           </main>
