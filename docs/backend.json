@@ -1,21 +1,10 @@
 
 {
   "entities": {
-    "Company": {
-      "title": "Company",
-      "type": "object",
-      "description": "Representa uma organização/cliente do sistema.",
-      "properties": {
-        "id": { "type": "string" },
-        "name": { "type": "string" },
-        "active": { "type": "boolean" }
-      },
-      "required": ["id", "name", "active"]
-    },
     "Demand": {
       "title": "Demand",
       "type": "object",
-      "description": "Chamado de suporte vinculado a uma empresa.",
+      "description": "Chamado de suporte vinculado diretamente ao usuário.",
       "properties": {
         "id": { "type": "string" },
         "userId": { "type": "string" },
@@ -26,9 +15,11 @@
         "category": { "type": "string" },
         "subcategory": { "type": "string" },
         "item": { "type": "string" },
+        "unit": { "type": "string" },
+        "sector": { "type": "string" },
         "source": { "type": "string", "enum": ["structured", "free-text"] }
       },
-      "required": ["id", "userId", "timestamp", "title", "description", "resolution", "source"]
+      "required": ["id", "userId", "timestamp", "title", "description", "source"]
     },
     "Category": {
       "title": "Category",
@@ -36,19 +27,9 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "subcategories": { 
-          "type": "array", 
-          "items": { 
-            "type": "object",
-            "properties": {
-              "name": { "type": "string" },
-              "items": { "type": "array", "items": { "type": "string" } }
-            }
-          } 
-        },
         "active": { "type": "boolean" }
       },
-      "required": ["id", "name", "subcategories", "active"]
+      "required": ["id", "name", "active"]
     },
     "Unit": {
       "title": "Unit",
@@ -56,10 +37,9 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "sectors": { "type": "array", "items": { "type": "string" } },
         "active": { "type": "boolean" }
       },
-      "required": ["id", "name", "sectors", "active"]
+      "required": ["id", "name", "active"]
     },
     "Profile": {
       "title": "Profile",
@@ -68,20 +48,9 @@
         "uid": { "type": "string" },
         "email": { "type": "string" },
         "displayName": { "type": "string" },
-        "activeCompanyId": { "type": "string" },
-        "companies": {
-          "type": "array",
-          "items": {
-            "type": "object",
-            "properties": {
-              "id": { "type": "string" },
-              "role": { "type": "string", "enum": ["admin", "user"] },
-              "name": { "type": "string" }
-            }
-          }
-        }
+        "createdAt": { "type": "string", "format": "date-time" }
       },
-      "required": ["uid", "companies"]
+      "required": ["uid", "email"]
     }
   },
   "auth": {
@@ -90,23 +59,19 @@
   "firestore": {
     "/users/{userId}/profile/profileDoc": {
       "schema": "#/backend/entities/Profile",
-      "description": "Perfil do usuário com lista de empresas e empresa ativa."
+      "description": "Perfil pessoal do usuário."
     },
-    "/companies/{companyId}": {
-      "schema": "#/backend/entities/Company",
-      "description": "Dados da empresa."
-    },
-    "/companies/{companyId}/categories/{categoryId}": {
+    "/users/{userId}/categories/{categoryId}": {
       "schema": "#/backend/entities/Category",
-      "description": "Categorias específicas da empresa."
+      "description": "Categorias pessoais do usuário."
     },
-    "/companies/{companyId}/units/{unitId}": {
+    "/users/{userId}/units/{unitId}": {
       "schema": "#/backend/entities/Unit",
-      "description": "Unidades específicas da empresa."
+      "description": "Unidades pessoais do usuário."
     },
-    "/companies/{companyId}/demands/{demandId}": {
+    "/users/{userId}/demands/{demandId}": {
       "schema": "#/backend/entities/Demand",
-      "description": "Chamados vinculados à empresa."
+      "description": "Chamados pessoais do usuário."
     }
   }
 }

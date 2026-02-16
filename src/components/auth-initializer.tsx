@@ -1,3 +1,4 @@
+
 'use client';
 
 import { useEffect, useState } from 'react';
@@ -22,47 +23,29 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (!isMounted || isUserLoading) return;
 
-    // CORREÇÃO: Verifica se está em página de login (/ ou /login)
     const isLoginPage = pathname === '/' || pathname === '/login';
 
-    // Se não estiver logado e não estiver na página de login, redireciona para /
     if (!user && !isLoginPage) {
       router.push('/');
       return;
     }
 
-    // CORREÇÃO: Se estiver logado e estiver na página de login, redireciona para /demands/history
     if (user && isLoginPage) {
       router.push('/demands/history');
       return;
     }
 
-    // Garantir que o usuário tenha um perfil e empresa
+    // Garantir que o usuário tenha um perfil pessoal
     if (user && db && !isInitializingProfile && !profile) {
       setIsInitializingProfile(true);
       const profileRef = doc(db, 'users', user.uid, 'profile', 'profileDoc');
-      const stableCompanyId = `org-${user.uid.substring(0, 10)}`;
-      const companyRef = doc(db, 'companies', stableCompanyId);
       
-      // Criar perfil e empresa
-      Promise.all([
-        setDoc(companyRef, {
-          id: stableCompanyId,
-          name: 'Minha Organização',
-          active: true,
-          createdAt: new Date().toISOString()
-        }, { merge: true }),
-        setDoc(profileRef, {
-          uid: user.uid,
-          email: user.email,
-          displayName: user.displayName || user.email?.split('@')[0],
-          activeCompanyId: stableCompanyId,
-          companies: [
-            { id: stableCompanyId, name: 'Minha Organização', role: 'admin' }
-          ],
-          createdAt: new Date().toISOString()
-        }, { merge: true })
-      ])
+      setDoc(profileRef, {
+        uid: user.uid,
+        email: user.email,
+        displayName: user.displayName || user.email?.split('@')[0],
+        createdAt: new Date().toISOString()
+      }, { merge: true })
         .then(() => setIsInitializingProfile(false))
         .catch(err => {
           console.error("Erro ao inicializar perfil:", err);
@@ -73,14 +56,13 @@ export function AuthInitializer({ children }: { children: React.ReactNode }) {
 
   if (!isMounted) return null;
 
-  // Mostrar loading apenas se estiver logado e ainda carregando dados
   if (user && (isUserLoading || isInitializingProfile || !profile)) {
     return (
       <div className="flex h-screen w-full items-center justify-center bg-background">
         <div className="flex flex-col items-center gap-4">
           <Loader2 className="h-8 w-8 animate-spin text-primary" />
           <p className="text-sm text-muted-foreground font-medium">
-            Carregando...
+            Carregando Perfil...
           </p>
         </div>
       </div>

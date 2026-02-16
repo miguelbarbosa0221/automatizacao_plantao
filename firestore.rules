@@ -1,30 +1,16 @@
-// Regras versão 2
+
 rules_version = '2';
 
 service cloud.firestore {
   match /databases/{database}/documents {
+    // Regra fundamental: Usuário só acessa seu próprio diretório em /users/{userId}
+    match /users/{userId}/{document=**} {
+      allow read, write: if request.auth != null && request.auth.uid == userId;
+    }
 
-    // Exigir login para qualquer acesso
+    // Bloqueio total de outras rotas globais não migradas
     match /{document=**} {
-      allow read, write: if request.auth != null;
-    }
-
-    // Users e subcoleções (como profile)
-    match /users/{userId} {
-      allow read, write: if request.auth.uid == userId;
-
-      match /profile/{docId} {
-        allow read, write: if request.auth.uid == userId;
-      }
-    }
-
-    // Companies e suas subcoleções
-    match /companies/{companyId} {
-      allow read, write: if request.auth != null;
-
-      match /{sub=**} {
-        allow read, write: if request.auth != null;
-      }
+      allow read, write: if false;
     }
   }
 }

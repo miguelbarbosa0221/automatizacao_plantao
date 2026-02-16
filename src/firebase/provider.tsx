@@ -18,10 +18,8 @@ interface FirebaseProviderProps {
 interface UserAuthState {
   user: User | null;
   profile: any | null;
-  isAdmin: boolean;
   isUserLoading: boolean;
   userError: Error | null;
-  activeCompanyId: string | null;
 }
 
 export interface FirebaseContextState extends UserAuthState {
@@ -47,7 +45,6 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   firestore: propFirestore,
   auth: propAuth,
 }) => {
-  // Memoize SDKs: use props if provided, otherwise initialize
   const sdks = useMemo(() => {
     if (propApp && propFirestore && propAuth) {
       return { firebaseApp: propApp, firestore: propFirestore, auth: propAuth };
@@ -60,10 +57,8 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
   const [authState, setAuthState] = useState<UserAuthState>({
     user: null,
     profile: null,
-    isAdmin: false,
     isUserLoading: true,
     userError: null,
-    activeCompanyId: null,
   });
 
   useEffect(() => {
@@ -76,32 +71,12 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           const profileRef = doc(firestore, 'users', firebaseUser.uid, 'profile', 'profileDoc');
           
           const unsubscribeProfile = onSnapshot(profileRef, (snap) => {
-            if (snap.exists()) {
-              const profileData = snap.data();
-              const companies = profileData?.companies || [];
-              const activeCoId = profileData?.activeCompanyId || (companies[0]?.id) || null;
-              
-              const currentCompany = companies.find((c: any) => c.id === activeCoId);
-              const userIsAdmin = currentCompany?.role === 'admin';
-
-              setAuthState({
-                user: firebaseUser,
-                profile: profileData,
-                isAdmin: userIsAdmin,
-                activeCompanyId: activeCoId,
-                isUserLoading: false,
-                userError: null,
-              });
-            } else {
-              setAuthState({
-                user: firebaseUser,
-                profile: null,
-                isAdmin: false,
-                activeCompanyId: null,
-                isUserLoading: false,
-                userError: null
-              });
-            }
+            setAuthState({
+              user: firebaseUser,
+              profile: snap.exists() ? snap.data() : null,
+              isUserLoading: false,
+              userError: null,
+            });
           }, (err) => {
              setAuthState(prev => ({
                ...prev,
@@ -112,11 +87,11 @@ export const FirebaseProvider: React.FC<FirebaseProviderProps> = ({
           });
           return () => unsubscribeProfile();
         } else {
-          setAuthState({ user: null, profile: null, isAdmin: false, isUserLoading: false, userError: null, activeCompanyId: null });
+          setAuthState({ user: null, profile: null, isUserLoading: false, userError: null });
         }
       },
       (error) => {
-        setAuthState({ user: null, profile: null, isAdmin: false, isUserLoading: false, userError: error, activeCompanyId: null });
+        setAuthState({ user: null, profile: null, isUserLoading: false, userError: error });
       }
     );
     return () => unsubscribeAuth();
@@ -153,8 +128,6 @@ export const useFirebase = (): FirebaseServicesAndUser => {
     auth: context.auth,
     user: context.user,
     profile: context.profile,
-    isAdmin: context.isAdmin,
-    activeCompanyId: context.activeCompanyId,
     isUserLoading: context.isUserLoading,
     userError: context.userError,
   };
@@ -173,6 +146,6 @@ export function useMemoFirebase<T>(factory: () => T, deps: DependencyList): T & 
 }
 
 export const useUser = (): UserHookResult => {
-  const { user, profile, isAdmin, activeCompanyId, isUserLoading, userError } = useFirebase();
-  return { user, profile, isAdmin, activeCompanyId, isUserLoading, userError };
+  const { user, profile, isUserLoading, userError } = useFirebase();
+  return { user, profile, isUserLoading, userError };
 };
