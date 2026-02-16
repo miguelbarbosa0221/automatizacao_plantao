@@ -105,6 +105,7 @@ export default function SettingsPage() {
     const collectionName = COLLECTION_MAP[type];
     if (!user?.uid || !db || !collectionName) return;
 
+    // Verificar dependências antes de excluir
     const hasChildren = 
       (type === 'unit' && sectors.data?.some(s => s.parentId === id)) ||
       (type === 'category' && subcategories.data?.some(s => s.parentId === id)) ||
@@ -114,7 +115,7 @@ export default function SettingsPage() {
       toast({ 
         variant: "destructive", 
         title: "Operação Bloqueada", 
-        description: "Este item possui dependências. Remova os filhos primeiro." 
+        description: "Este item possui dependências (sub-itens). Remova os filhos primeiro." 
       });
       return;
     }
@@ -197,10 +198,10 @@ export default function SettingsPage() {
             <Tabs defaultValue="organizational" className="w-full flex-1 flex flex-col">
               <TabsList className="grid w-full max-w-md grid-cols-2 mb-4">
                 <TabsTrigger value="organizational" className="gap-2">
-                  <Building2 className="w-4 h-4" /> Estrutura
+                  <Building2 className="w-4 h-4" /> Estrutura Organizacional
                 </TabsTrigger>
                 <TabsTrigger value="taxonomy" className="gap-2">
-                  <Tag className="w-4 h-4" /> Classificação
+                  <Tag className="w-4 h-4" /> Classificação de Demandas
                 </TabsTrigger>
               </TabsList>
 
@@ -252,7 +253,7 @@ export default function SettingsPage() {
                           />
                           <Button size="sm" onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading}><Plus className="w-4 h-4" /></Button>
                         </div>
-                      ) : <div className="h-9 mt-2" />}
+                      ) : <div className="h-9 mt-2 text-xs text-muted-foreground italic flex items-center gap-2"><Info className="w-3 h-3" /> Selecione uma unidade para adicionar setores.</div>}
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       {selectedUnitId ? (
@@ -266,7 +267,7 @@ export default function SettingsPage() {
                       ) : (
                         <div className="flex-1 flex flex-col items-center justify-center p-10 text-muted-foreground opacity-40">
                           <Building2 className="w-12 h-12 mb-2" />
-                          <p className="text-xs">Selecione uma Unidade</p>
+                          <p className="text-xs">Selecione uma Unidade ao lado</p>
                         </div>
                       )}
                     </ScrollArea>
@@ -384,7 +385,7 @@ export default function SettingsPage() {
             <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 text-amber-800 text-[10px]">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <p>
-                <strong>Gestão Hierárquica:</strong> Você pode adicionar, remover e agora renomear qualquer item clicando no ícone do lápis. 
+                <strong>Gestão Hierárquica:</strong> Você pode adicionar, remover e renomear qualquer item clicando no ícone do lápis. 
                 Ao renomear uma Categoria, seus vínculos com Subcategorias e Itens permanecem intactos.
               </p>
             </div>
