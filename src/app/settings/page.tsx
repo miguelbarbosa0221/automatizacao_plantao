@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState } from "react";
@@ -40,7 +39,7 @@ export default function SettingsPage() {
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
 
-  // Estado para Edição (Renomear)
+  // Estado para Edição Inline
   const [renamingState, setRenamingState] = useState<{ id: string; type: string; name: string } | null>(null);
 
   // Estados para Novos Itens
@@ -75,7 +74,7 @@ export default function SettingsPage() {
         active: true
       });
       setNewName(prev => ({ ...prev, [type]: "" }));
-      toast({ title: "Item adicionado!" });
+      toast({ title: "Adicionado com sucesso!" });
     } catch (error: any) {
       toast({ variant: "destructive", title: "Erro ao salvar." });
     } finally {
@@ -91,8 +90,7 @@ export default function SettingsPage() {
     if (!name.trim() || !collectionName) return;
 
     try {
-      const docRef = doc(db, "users", user.uid, collectionName, id);
-      await updateDoc(docRef, { name: name.trim() });
+      await updateDoc(doc(db, "users", user.uid, collectionName, id), { name: name.trim() });
       setRenamingState(null);
       toast({ title: "Nome atualizado!" });
     } catch (error: any) {
@@ -113,14 +111,14 @@ export default function SettingsPage() {
       toast({ 
         variant: "destructive", 
         title: "Operação Bloqueada", 
-        description: "Este item possui dependências (sub-itens). Remova os filhos primeiro." 
+        description: "Exclua os itens filhos antes de remover este pai." 
       });
       return;
     }
 
     try {
       await deleteDoc(doc(db, "users", user.uid, collectionName, id));
-      toast({ title: "Item removido." });
+      toast({ title: "Removido com sucesso!" });
       if (id === selectedUnitId) setSelectedUnitId(null);
       if (id === selectedCategoryId) { setSelectedCategoryId(null); setSelectedSubcategoryId(null); }
       if (id === selectedSubcategoryId) setSelectedSubcategoryId(null);
@@ -128,23 +126,6 @@ export default function SettingsPage() {
       toast({ variant: "destructive", title: "Erro ao remover." });
     }
   };
-
-  const renderItemActions = (type: string, item: CatalogItem, isSelected: boolean) => (
-    <div className="flex items-center gap-1">
-      <Button 
-        size="icon" variant="ghost" className={cn("h-7 w-7 opacity-0 group-hover:opacity-100", isSelected && "opacity-100")}
-        onClick={(e) => { e.stopPropagation(); setRenamingState({ id: item.id, type, name: item.name }); }}
-      >
-        <Pencil className={cn("w-3 h-3 text-muted-foreground hover:text-primary", isSelected && "text-white/70")} />
-      </Button>
-      <Button 
-        size="icon" variant="ghost" className={cn("h-7 w-7 opacity-0 group-hover:opacity-100", isSelected && "opacity-100")}
-        onClick={(e) => { e.stopPropagation(); handleRemove(type, item.id); }}
-      >
-        <Trash2 className={cn("w-3 h-3 text-muted-foreground hover:text-destructive", isSelected && "text-white/70")} />
-      </Button>
-    </div>
-  );
 
   const renderEditableContent = (type: string, item: CatalogItem, isSelected: boolean) => {
     if (renamingState?.id === item.id) {
@@ -170,8 +151,19 @@ export default function SettingsPage() {
     return (
       <div className="flex items-center justify-between w-full">
         <span className={cn("truncate flex-1 text-sm", isSelected && "font-bold")}>{item.name}</span>
-        <div className="flex items-center gap-1">
-          {renderItemActions(type, item, isSelected)}
+        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+          <Button 
+            size="icon" variant="ghost" className="h-7 w-7"
+            onClick={(e) => { e.stopPropagation(); setRenamingState({ id: item.id, type, name: item.name }); }}
+          >
+            <Pencil className={cn("w-3 h-3 text-muted-foreground", isSelected && "text-white/70")} />
+          </Button>
+          <Button 
+            size="icon" variant="ghost" className="h-7 w-7"
+            onClick={(e) => { e.stopPropagation(); handleRemove(type, item.id); }}
+          >
+            <Trash2 className={cn("w-3 h-3 text-muted-foreground", isSelected && "text-white/70")} />
+          </Button>
           {(type === 'unit' || type === 'category' || type === 'subcategory') && (
             <ChevronRight className={cn("w-4 h-4 opacity-30 ml-1", isSelected && "opacity-100")} />
           )}
@@ -194,43 +186,26 @@ export default function SettingsPage() {
 
           <main className="flex-1 p-6 overflow-hidden flex flex-col gap-6 bg-slate-50/40">
             <Tabs defaultValue="organizational" className="w-full flex-1 flex flex-col min-h-0">
-              <TabsList className="grid w-full max-w-md grid-cols-2 mb-4 shrink-0">
-                <TabsTrigger value="organizational" className="gap-2">
-                  <Building2 className="w-4 h-4" /> Estrutura Organizacional
-                </TabsTrigger>
-                <TabsTrigger value="taxonomy" className="gap-2">
-                  <Tag className="w-4 h-4" /> Classificação de Demandas
-                </TabsTrigger>
+              <TabsList className="grid w-full max-w-md grid-cols-2 mb-4">
+                <TabsTrigger value="organizational" className="gap-2"><Building2 className="w-4 h-4" /> Estrutura Organizacional</TabsTrigger>
+                <TabsTrigger value="taxonomy" className="gap-2"><Tag className="w-4 h-4" /> Classificação de Demandas</TabsTrigger>
               </TabsList>
 
               <TabsContent value="organizational" className="flex-1 mt-0 min-h-0">
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full min-h-0">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3 bg-muted/20 border-b shrink-0">
-                      <CardTitle className="text-sm font-bold uppercase">1. Unidades</CardTitle>
+                    <CardHeader className="pb-3 border-b bg-muted/20">
+                      <CardTitle className="text-xs font-bold uppercase">1. Unidades</CardTitle>
                       <div className="flex gap-2 mt-2">
-                        <Input 
-                          placeholder="Nova Unidade..." 
-                          value={newName.unit} 
-                          onChange={(e) => setNewName(prev => ({ ...prev, unit: e.target.value }))}
-                          onKeyDown={(e) => e.key === 'Enter' && handleAdd('unit')}
-                          className="h-9 text-xs"
-                        />
-                        <button className="bg-primary text-primary-foreground p-2 rounded hover:bg-primary/90" onClick={() => handleAdd('unit')} disabled={isLoading}><Plus className="w-4 h-4" /></button>
+                        <Input placeholder="Nova Unidade..." value={newName.unit} onChange={(e) => setNewName({...newName, unit: e.target.value})} className="h-9 text-xs" />
+                        <Button onClick={() => handleAdd('unit')} disabled={isLoading} size="icon"><Plus className="w-4 h-4" /></Button>
                       </div>
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       <div className="p-2 space-y-1">
-                        {units.data?.map(unit => (
-                          <div 
-                            key={unit.id}
-                            onClick={() => setSelectedUnitId(unit.id)}
-                            className={cn(
-                              "flex items-center p-3 rounded-md cursor-pointer group transition-colors",
-                              selectedUnitId === unit.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                            )}
-                          >
-                            {renderEditableContent('unit', unit, selectedUnitId === unit.id)}
+                        {units.data?.map(u => (
+                          <div key={u.id} onClick={() => setSelectedUnitId(u.id)} className={cn("flex items-center p-3 rounded-md cursor-pointer group", selectedUnitId === u.id ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>
+                            {renderEditableContent('unit', u, selectedUnitId === u.id)}
                           </div>
                         ))}
                       </div>
@@ -238,154 +213,106 @@ export default function SettingsPage() {
                   </Card>
 
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3 bg-muted/20 border-b shrink-0">
-                      <CardTitle className="text-sm font-bold uppercase">2. Setores</CardTitle>
+                    <CardHeader className="pb-3 border-b bg-muted/20">
+                      <CardTitle className="text-xs font-bold uppercase">2. Setores</CardTitle>
                       {selectedUnitId ? (
                         <div className="flex gap-2 mt-2">
-                          <Input 
-                            placeholder="Novo Setor..." 
-                            value={newName.sector} 
-                            onChange={(e) => setNewName(prev => ({ ...prev, sector: e.target.value }))}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAdd('sector', selectedUnitId)}
-                            className="h-9 text-xs"
-                          />
-                          <button className="bg-primary text-primary-foreground p-2 rounded hover:bg-primary/90" onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading}><Plus className="w-4 h-4" /></button>
+                          <Input placeholder="Novo Setor..." value={newName.sector} onChange={(e) => setNewName({...newName, sector: e.target.value})} className="h-9 text-xs" />
+                          <Button onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading} size="icon"><Plus className="w-4 h-4" /></Button>
                         </div>
-                      ) : <div className="h-9 mt-2 text-xs text-muted-foreground italic flex items-center gap-2"><Info className="w-3 h-3" /> Selecione uma unidade.</div>}
+                      ) : <div className="h-9 mt-2 flex items-center text-[10px] text-muted-foreground uppercase"><Info className="w-3 h-3 mr-1" /> Selecione uma Unidade</div>}
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       {selectedUnitId ? (
                         <div className="p-2 space-y-1">
-                          {sectors.data?.filter(s => s.parentId === selectedUnitId).map(sector => (
-                            <div key={sector.id} className="flex items-center p-3 rounded-md hover:bg-muted group">
-                              {renderEditableContent('sector', sector, false)}
+                          {sectors.data?.filter(s => s.parentId === selectedUnitId).map(s => (
+                            <div key={s.id} className="flex items-center p-3 rounded-md group hover:bg-muted">
+                              {renderEditableContent('sector', s, false)}
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-10 text-muted-foreground opacity-40">
-                          <Building2 className="w-12 h-12 mb-2" />
-                          <p className="text-xs">Selecione uma Unidade ao lado</p>
-                        </div>
-                      )}
+                      ) : <div className="flex-1 flex flex-col items-center justify-center h-full opacity-20"><Building2 className="w-12 h-12" /></div>}
                     </ScrollArea>
                   </Card>
                 </div>
               </TabsContent>
 
               <TabsContent value="taxonomy" className="flex-1 mt-0 min-h-0">
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full min-h-0">
-                  <Card className="flex flex-col h-full overflow-hidden border-r">
-                    <CardHeader className="pb-3 border-b bg-muted/20 shrink-0">
-                      <CardTitle className="text-xs font-bold uppercase">1. Categorias</CardTitle>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
+                  {/* Miller Columns: Categorias */}
+                  <Card className="flex flex-col h-full overflow-hidden">
+                    <CardHeader className="pb-3 border-b bg-muted/20">
+                      <CardTitle className="text-[10px] font-bold uppercase">1. Categorias</CardTitle>
                       <div className="flex gap-2 mt-2">
-                        <Input 
-                          placeholder="Nova..." value={newName.category} 
-                          onChange={(e) => setNewName(prev => ({ ...prev, category: e.target.value }))}
-                          onKeyDown={(e) => e.key === 'Enter' && handleAdd('category')}
-                          className="h-8 text-[10px]"
-                        />
-                        <button className="bg-primary text-primary-foreground p-1 rounded hover:bg-primary/90" onClick={() => handleAdd('category')} disabled={isLoading}><Plus className="w-4 h-4" /></button>
+                        <Input placeholder="Nova..." value={newName.category} onChange={(e) => setNewName({...newName, category: e.target.value})} className="h-8 text-xs" />
+                        <Button onClick={() => handleAdd('category')} size="icon" className="h-8 w-8"><Plus className="w-4 h-4" /></Button>
                       </div>
                     </CardHeader>
                     <ScrollArea className="flex-1">
-                      <div className="p-1 space-y-0.5">
-                        {categories.data?.map(cat => (
-                          <div 
-                            key={cat.id}
-                            onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryId(null); }}
-                            className={cn(
-                              "flex items-center p-2.5 rounded cursor-pointer group text-xs",
-                              selectedCategoryId === cat.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
-                            )}
-                          >
-                            {renderEditableContent('category', cat, selectedCategoryId === cat.id)}
+                      <div className="p-1.5 space-y-0.5">
+                        {categories.data?.map(c => (
+                          <div key={c.id} onClick={() => { setSelectedCategoryId(c.id); setSelectedSubcategoryId(null); }} className={cn("flex items-center p-2.5 rounded cursor-pointer group text-xs", selectedCategoryId === c.id ? "bg-primary text-primary-foreground" : "hover:bg-muted")}>
+                            {renderEditableContent('category', c, selectedCategoryId === c.id)}
                           </div>
                         ))}
                       </div>
                     </ScrollArea>
                   </Card>
 
-                  <Card className="flex flex-col h-full overflow-hidden border-r">
-                    <CardHeader className="pb-3 border-b bg-muted/20 shrink-0">
-                      <CardTitle className="text-xs font-bold uppercase">2. Subcategorias</CardTitle>
+                  {/* Miller Columns: Subcategorias */}
+                  <Card className="flex flex-col h-full overflow-hidden">
+                    <CardHeader className="pb-3 border-b bg-muted/20">
+                      <CardTitle className="text-[10px] font-bold uppercase">2. Subcategorias</CardTitle>
                       {selectedCategoryId ? (
                         <div className="flex gap-2 mt-2">
-                          <Input 
-                            placeholder="Nova..." value={newName.subcategory} 
-                            onChange={(e) => setNewName(prev => ({ ...prev, subcategory: e.target.value }))}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAdd('subcategory', selectedCategoryId)}
-                            className="h-8 text-[10px]"
-                          />
-                          <button className="bg-primary text-primary-foreground p-1 rounded hover:bg-primary/90" onClick={() => handleAdd('subcategory', selectedCategoryId)} disabled={isLoading}><Plus className="w-4 h-4" /></button>
+                          <Input placeholder="Nova..." value={newName.subcategory} onChange={(e) => setNewName({...newName, subcategory: e.target.value})} className="h-8 text-xs" />
+                          <Button onClick={() => handleAdd('subcategory', selectedCategoryId)} size="icon" className="h-8 w-8"><Plus className="w-4 h-4" /></Button>
                         </div>
                       ) : <div className="h-8 mt-2" />}
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       {selectedCategoryId ? (
-                        <div className="p-1 space-y-0.5">
-                          {subcategories.data?.filter(s => s.parentId === selectedCategoryId).map(sub => (
-                            <div 
-                              key={sub.id}
-                              onClick={() => setSelectedSubcategoryId(sub.id)}
-                              className={cn(
-                                "flex items-center p-2.5 rounded cursor-pointer group text-xs",
-                                selectedSubcategoryId === sub.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
-                              )}
-                            >
-                              {renderEditableContent('subcategory', sub, selectedSubcategoryId === sub.id)}
+                        <div className="p-1.5 space-y-0.5">
+                          {subcategories.data?.filter(s => s.parentId === selectedCategoryId).map(s => (
+                            <div key={s.id} onClick={() => setSelectedSubcategoryId(s.id)} className={cn("flex items-center p-2.5 rounded cursor-pointer group text-xs", selectedSubcategoryId === s.id ? "bg-accent text-accent-foreground" : "hover:bg-muted")}>
+                              {renderEditableContent('subcategory', s, selectedSubcategoryId === s.id)}
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-muted-foreground opacity-30 text-[10px]">
-                          <Info className="w-6 h-6 mb-1" /> Selecione uma Categoria
-                        </div>
-                      )}
+                      ) : <div className="flex-1 flex flex-col items-center justify-center h-full opacity-10"><Tag className="w-10 h-10" /></div>}
                     </ScrollArea>
                   </Card>
 
+                  {/* Miller Columns: Itens */}
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3 border-b bg-muted/20 shrink-0">
-                      <CardTitle className="text-xs font-bold uppercase">3. Itens (Ação)</CardTitle>
+                    <CardHeader className="pb-3 border-b bg-muted/20">
+                      <CardTitle className="text-[10px] font-bold uppercase">3. Itens de Ação</CardTitle>
                       {selectedSubcategoryId ? (
                         <div className="flex gap-2 mt-2">
-                          <Input 
-                            placeholder="Novo..." value={newName.item} 
-                            onChange={(e) => setNewName(prev => ({ ...prev, item: e.target.value }))}
-                            onKeyDown={(e) => e.key === 'Enter' && handleAdd('item', selectedSubcategoryId)}
-                            className="h-8 text-[10px]"
-                          />
-                          <button className="bg-primary text-primary-foreground p-1 rounded hover:bg-primary/90" onClick={() => handleAdd('item', selectedSubcategoryId)} disabled={isLoading}><Plus className="w-4 h-4" /></button>
+                          <Input placeholder="Novo..." value={newName.item} onChange={(e) => setNewName({...newName, item: e.target.value})} className="h-8 text-xs" />
+                          <Button onClick={() => handleAdd('item', selectedSubcategoryId)} size="icon" className="h-8 w-8"><Plus className="w-4 h-4" /></Button>
                         </div>
                       ) : <div className="h-8 mt-2" />}
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       {selectedSubcategoryId ? (
-                        <div className="p-1 space-y-0.5">
-                          {items.data?.filter(i => i.parentId === selectedSubcategoryId).map(item => (
-                            <div key={item.id} className="flex items-center p-2.5 rounded hover:bg-muted group text-xs">
-                              {renderEditableContent('item', item, false)}
+                        <div className="p-1.5 space-y-0.5">
+                          {items.data?.filter(i => i.parentId === selectedSubcategoryId).map(i => (
+                            <div key={i.id} className="flex items-center p-2.5 rounded group hover:bg-muted text-xs">
+                              {renderEditableContent('item', i, false)}
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-muted-foreground opacity-30 text-[10px]">
-                          <Layers className="w-6 h-6 mb-1" /> Selecione uma Subcategoria
-                        </div>
-                      )}
+                      ) : <div className="flex-1 flex flex-col items-center justify-center h-full opacity-10"><Layers className="w-10 h-10" /></div>}
                     </ScrollArea>
                   </Card>
                 </div>
               </TabsContent>
             </Tabs>
-            
-            <div className="shrink-0 bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 text-amber-800 text-[10px]">
-              <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
-              <p>
-                <strong>Gestão Hierárquica:</strong> Use áreas de rolagem independentes para navegar no seu catálogo. 
-                Os botões de ação (editar/excluir) aparecem ao passar o mouse ou selecionar um item.
-              </p>
+
+            <div className="shrink-0 flex items-center gap-2 bg-amber-50 border border-amber-200 p-3 rounded-lg text-[10px] text-amber-800 font-bold uppercase tracking-wider">
+              <AlertCircle className="w-4 h-4" />
+              <span>Gerencie seu catálogo técnico através de navegação em cascata. O sistema protege a integridade impedindo exclusão de pais com filhos.</span>
             </div>
           </main>
         </SidebarInset>

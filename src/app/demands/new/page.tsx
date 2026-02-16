@@ -18,7 +18,7 @@ import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
 
-const STORAGE_KEY = "plantao_ai_personal_draft_v3";
+const STORAGE_KEY = "plantao_ai_personal_draft_v4";
 
 interface RowData {
   id: string;
@@ -30,7 +30,6 @@ interface RowData {
   description: string;
   resolution: string;
   isProcessing?: boolean;
-  aiTitle?: string;
 }
 
 interface CatalogItem {
@@ -45,7 +44,7 @@ export default function PersonalRegistryPage() {
   const { user } = useUser()
   const router = useRouter()
 
-  // Carregar Catálogos
+  // Carregar Catálogos (Filtragem em Memória no Cliente para Performance)
   const units = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "units") : null, [db, user?.uid]));
   const sectors = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "sectors") : null, [db, user?.uid]));
   const categories = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "categories") : null, [db, user?.uid]));
@@ -103,11 +102,9 @@ export default function PersonalRegistryPage() {
         return newRow;
       });
 
-      // Adicionar nova linha se a última linha foi preenchida
+      // Adicionar nova linha automática
       const lastRow = updated[updated.length - 1];
-      const hasAnyData = lastRow.categoryId || lastRow.unitId || lastRow.description;
-      
-      if (lastRow.id === id && hasAnyData) {
+      if (lastRow.id === id && (lastRow.categoryId || lastRow.description)) {
         return [...updated, { id: Math.random().toString(36).substr(2, 9), unitId: "", sectorId: "", categoryId: "", subcategoryId: "", itemId: "", description: "", resolution: "" }];
       }
       
@@ -115,46 +112,28 @@ export default function PersonalRegistryPage() {
     });
   }, []);
 
-  const getRowContext = (row: RowData) => {
-    const catName = categories.data?.find(c => c.id === row.categoryId)?.name || "";
-    const subName = subcategories.data?.find(s => s.id === row.subcategoryId)?.name || "";
-    const itemName = items.data?.find(i => i.id === row.itemId)?.name || "";
-    const unitName = units.data?.find(u => u.id === row.unitId)?.name || "";
-    const sectorName = sectors.data?.find(s => s.id === row.sectorId)?.name || "";
+  const getRowContextString = (row: RowData) => {
+    const cat = categories.data?.find(c => c.id === row.categoryId)?.name || "";
+    const sub = subcategories.data?.find(s => s.id === row.subcategoryId)?.name || "";
+    const item = items.data?.find(i => i.id === row.itemId)?.name || "";
+    const unit = units.data?.find(u => u.id === row.unitId)?.name || "";
+    const sector = sectors.data?.find(s => s.id === row.sectorId)?.name || "";
 
-    return `
-      LOCALIZAÇÃO: ${unitName} / ${sectorName}
-      CATEGORIA: ${catName}
-      SUBCATEGORIA: ${subName}
-      ITEM: ${itemName}
-      DETALHES: ${row.description || "Sem descrição"}
-      AÇÃO: ${row.resolution || "Sem resolução informada"}
-    `.trim();
+    return `LOCALIZAÇÃO: ${unit} / ${sector} | CATEGORIA: ${cat} | SUBCATEGORIA: ${sub} | ITEM: ${item} | DETALHES: ${row.description} | AÇÃO: ${row.resolution}`.trim();
   }
 
   const handleAIRow = async (id: string) => {
     const row = rows.find(r => r.id === id);
-    if (!row) return;
-
-    if (!row.description && !row.categoryId) {
-      toast({ title: "Dados insuficientes", description: "Preencha ao menos uma categoria ou relato para a IA processar.", variant: "destructive" });
-      return;
-    }
+    if (!row || (!row.description && !row.categoryId)) return;
 
     updateRow(id, { isProcessing: true });
-
     try {
-      const result = await processFreeTextDemandWithGemini({ freeText: getRowContext(row) });
-      updateRow(id, { 
-        description: result.description, 
-        resolution: result.resolution,
-        aiTitle: result.title,
-        isProcessing: false 
-      });
-      toast({ title: "IA: Sucesso!", description: "Dados enriquecidos com inteligência artificial." });
-    } catch (e: any) {
+      const result = await processFreeTextDemandWithGemini({ freeText: getRowContextString(row) });
+      updateRow(id, { description: result.description, resolution: result.resolution, isProcessing: false });
+      toast({ title: "Enriquecido!", description: "Dados profissionalizados pela IA." });
+    } catch (e) {
       updateRow(id, { isProcessing: false });
-      toast({ title: "Erro na IA", description: "Não foi possível processar agora. Tente novamente.", variant: "destructive" });
+      toast({ title: "IA Indisponível", variant: "destructive" });
     }
   };
 
@@ -163,73 +142,51 @@ export default function PersonalRegistryPage() {
     setRows(prev => prev.filter(r => r.id !== id));
   };
 
-  const handleBatchSave = async () => {
-    const rowsToProcess = rows.filter(r => r.categoryId && (r.description || r.resolution));
-
-    if (rowsToProcess.length === 0) {
-      toast({ title: "Dados incompletos", description: "Preencha ao menos uma categoria e um relato.", variant: "destructive" });
+  const handleBatchFinalize = async () => {
+    const validRows = rows.filter(r => r.categoryId && (r.description || r.resolution));
+    if (validRows.length === 0) {
+      toast({ title: "Preencha ao menos um registro.", variant: "destructive" });
       return;
     }
 
-    if (!user || !db) return;
-    
     setIsSavingAll(true);
     setIsGeneratingAI(true);
 
     try {
       const batch = writeBatch(db);
       
-      // 1. Processar todas as linhas pela IA antes de salvar (Professional Enrichement)
-      const enrichedResults = await Promise.all(rowsToProcess.map(async (row) => {
+      // 1. Processamento em Lote pela IA (Profissionalização Proativa)
+      const enrichedResults = await Promise.all(validRows.map(async (row) => {
         try {
-          const aiResult = await processFreeTextDemandWithGemini({ freeText: getRowContext(row) });
+          const aiResult = await processFreeTextDemandWithGemini({ freeText: getRowContextString(row) });
           return { ...row, ...aiResult };
-        } catch (e) {
-          console.error("Erro no enriquecimento em lote:", e);
-          return row; // Fallback para os dados originais se falhar
-        }
+        } catch (e) { return row; }
       }));
 
-      setIsGeneratingAI(false); // Fim da fase de IA
+      setIsGeneratingAI(false);
 
-      // 2. Gravar no Firestore
+      // 2. Persistência no Firestore
       enrichedResults.forEach((row) => {
         const demandId = Math.random().toString(36).substr(2, 9);
-        const demandRef = doc(db, "users", user.uid, "demands", demandId);
+        const demandRef = doc(db, "users", user!.uid, "demands", demandId);
         
-        const catName = categories.data?.find(c => c.id === row.categoryId)?.name || "";
-        const subName = subcategories.data?.find(s => s.id === row.subcategoryId)?.name || "";
-        const itemName = items.data?.find(i => i.id === row.itemId)?.name || "";
-        const unitName = units.data?.find(u => u.id === row.unitId)?.name || "";
-        const sectorName = sectors.data?.find(s => s.id === row.sectorId)?.name || "";
-
         batch.set(demandRef, {
+          ...row,
           id: demandId,
-          userId: user.uid,
+          userId: user!.uid,
           timestamp: new Date().toISOString(),
-          title: row.title || row.aiTitle || `${catName} - ${itemName || subName || 'Geral'}`,
-          description: row.description,
-          resolution: row.resolution,
-          source: 'structured',
-          unitId: row.unitId,
-          unitName,
-          sectorId: row.sectorId,
-          sectorName,
-          categoryId: row.categoryId,
-          categoryName: catName,
-          subcategoryId: row.subcategoryId,
-          subcategoryName: subName,
-          itemId: row.itemId,
-          itemName: itemName
+          categoryName: categories.data?.find(c => c.id === row.categoryId)?.name || "Geral",
+          unitName: units.data?.find(u => u.id === row.unitId)?.name || "",
+          source: 'structured'
         });
       });
 
       await batch.commit();
-      localStorage.removeItem(`${STORAGE_KEY}_${user.uid}`);
-      toast({ title: "Plantão Finalizado!", description: `${enrichedResults.length} registros enriquecidos e salvos.` });
+      localStorage.removeItem(`${STORAGE_KEY}_${user!.uid}`);
+      toast({ title: "Plantão Finalizado!", description: `${enrichedResults.length} registros salvos com IA.` });
       router.push("/demands/history");
     } catch (error: any) {
-      toast({ title: "Erro no salvamento", description: error.message, variant: "destructive" });
+      toast({ title: "Erro ao salvar", variant: "destructive" });
     } finally {
       setIsSavingAll(false);
       setIsGeneratingAI(false);
@@ -241,171 +198,94 @@ export default function PersonalRegistryPage() {
       <div className="flex h-screen bg-background">
         <AppSidebar />
         <SidebarInset>
-          <header className="flex h-16 shrink-0 items-center gap-2 border-b px-4 bg-card/50">
-            <SidebarTrigger />
+          <header className="flex h-16 shrink-0 items-center justify-between gap-2 border-b px-4 bg-card/50">
             <div className="flex items-center gap-2">
+              <SidebarTrigger />
               <Zap className="w-5 h-5 text-primary" />
-              <h1 className="text-lg font-semibold">Meu Plantão Inteligente</h1>
+              <h1 className="text-lg font-bold">Meu Plantão Inteligente</h1>
             </div>
-            <div className="ml-auto flex items-center gap-3">
-              {isLoadedFromDraft && (
-                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-600 border-blue-200">
-                  <History className="w-3 h-3 mr-1" /> Rascunho Ativo
-                </Badge>
-              )}
-              <Button onClick={handleBatchSave} disabled={isSavingAll} className="gap-2 font-bold min-w-[180px]">
-                {isSavingAll ? (
-                  <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
-                    {isGeneratingAI ? "IA Redigindo..." : "Salvando..."}
-                  </>
-                ) : (
-                  <>
-                    <ClipboardCheck className="w-4 h-4" />
-                    Finalizar Plantão ({rows.filter(r => r.categoryId && (r.description || r.resolution)).length})
-                  </>
-                )}
+            <div className="flex items-center gap-3">
+              {isLoadedFromDraft && <Badge variant="outline" className="bg-blue-50 text-blue-600 text-[10px]"><History className="w-3 h-3 mr-1" /> Rascunho</Badge>}
+              <Button onClick={handleBatchFinalize} disabled={isSavingAll} className="min-w-[180px] font-bold">
+                {isSavingAll ? <><Loader2 className="w-4 h-4 animate-spin mr-2" /> {isGeneratingAI ? "Redigindo..." : "Salvando..."}</> : <><ClipboardCheck className="w-4 h-4 mr-2" /> Finalizar ({validRowsCount(rows)})</>}
               </Button>
             </div>
           </header>
-          
-          <main className="flex-1 overflow-hidden flex flex-col p-4 bg-slate-50/40 relative">
-            {/* Overlay Global de Processamento */}
+
+          <main className="flex-1 overflow-hidden p-4 bg-slate-50/40 relative">
             {isGeneratingAI && (
-              <div className="absolute inset-0 z-50 bg-white/60 backdrop-blur-sm flex items-center justify-center flex-col gap-4 animate-in fade-in duration-500">
-                <div className="p-8 bg-white shadow-2xl rounded-2xl border border-primary/20 flex flex-col items-center gap-6 max-w-sm text-center">
-                  <div className="relative">
-                    <Sparkles className="w-12 h-12 text-primary animate-pulse" />
-                    <Loader2 className="w-16 h-16 text-primary/20 animate-spin absolute -inset-2" />
-                  </div>
-                  <div className="space-y-2">
-                    <h3 className="text-lg font-bold">Inteligência Artificial Ativa</h3>
-                    <p className="text-sm text-muted-foreground leading-relaxed">
-                      Aguarde um momento enquanto o Gemini redige os relatórios técnicos e profissionaliza o seu histórico.
-                    </p>
-                  </div>
+              <div className="absolute inset-0 z-50 bg-white/60 backdrop-blur-sm flex items-center justify-center animate-in fade-in">
+                <div className="p-8 bg-white shadow-2xl rounded-2xl border flex flex-col items-center gap-4 text-center max-w-sm">
+                   <Sparkles className="w-12 h-12 text-primary animate-pulse" />
+                   <h3 className="font-bold">Profissionalizando Histórico</h3>
+                   <p className="text-xs text-muted-foreground">O Gemini está revisando seus relatos e gerando resoluções técnicas completas.</p>
                 </div>
               </div>
             )}
 
-            <Card className="border shadow-lg flex-1 flex flex-col overflow-hidden bg-card">
-              <ScrollArea className="flex-1 w-full">
+            <Card className="border shadow-lg h-full flex flex-col overflow-hidden bg-card">
+              <ScrollArea className="flex-1">
                 <div className="min-w-[1500px]">
                   <Table>
                     <TableHeader className="bg-muted/80 sticky top-0 z-20">
-                      <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-[180px] text-xs font-bold uppercase">Unidade</TableHead>
-                        <TableHead className="w-[160px] text-xs font-bold uppercase">Setor</TableHead>
-                        <TableHead className="w-[180px] text-xs font-bold uppercase text-primary">Categoria</TableHead>
-                        <TableHead className="w-[180px] text-xs font-bold uppercase text-primary">Subcategoria</TableHead>
-                        <TableHead className="w-[160px] text-xs font-bold uppercase text-primary">Item</TableHead>
-                        <TableHead className="flex-1 text-xs font-bold uppercase">Relato do Problema</TableHead>
-                        <TableHead className="w-[350px] text-xs font-bold uppercase">Ação Realizada</TableHead>
-                        <TableHead className="w-[80px] text-center text-xs font-bold uppercase">IA</TableHead>
+                      <TableRow>
+                        <TableHead className="w-[180px] text-[10px] font-bold uppercase">Unidade</TableHead>
+                        <TableHead className="w-[160px] text-[10px] font-bold uppercase">Setor</TableHead>
+                        <TableHead className="w-[180px] text-[10px] font-bold uppercase text-primary">Categoria</TableHead>
+                        <TableHead className="w-[180px] text-[10px] font-bold uppercase text-primary">Subcat</TableHead>
+                        <TableHead className="w-[160px] text-[10px] font-bold uppercase text-primary">Item</TableHead>
+                        <TableHead className="flex-1 text-[10px] font-bold uppercase">Problema</TableHead>
+                        <TableHead className="w-[350px] text-[10px] font-bold uppercase">Resolução</TableHead>
+                        <TableHead className="w-[50px] text-center">IA</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {rows.map((row, index) => (
-                        <TableRow key={row.id} className={cn("group", index === rows.length - 1 && "bg-primary/5")}>
+                      {rows.map((row, idx) => (
+                        <TableRow key={row.id} className={cn(idx === rows.length - 1 && "bg-primary/5")}>
                           <TableCell className="p-1">
-                            <Select value={row.unitId} onValueChange={(val) => updateRow(row.id, { unitId: val })}>
-                              <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder="Unidade..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {units.data?.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
-                              </SelectContent>
+                            <Select value={row.unitId} onValueChange={(v) => updateRow(row.id, { unitId: v })}>
+                              <SelectTrigger className="border-none h-9 text-xs"><SelectValue placeholder="..." /></SelectTrigger>
+                              <SelectContent>{units.data?.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}</SelectContent>
                             </Select>
                           </TableCell>
-                          
                           <TableCell className="p-1">
-                            <Select value={row.sectorId} onValueChange={(val) => updateRow(row.id, { sectorId: val })} disabled={!row.unitId}>
-                              <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder={row.unitId ? "Setor..." : "---"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {sectors.data?.filter(s => s.parentId === row.unitId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                              </SelectContent>
+                            <Select value={row.sectorId} onValueChange={(v) => updateRow(row.id, { sectorId: v })} disabled={!row.unitId}>
+                              <SelectTrigger className="border-none h-9 text-xs"><SelectValue placeholder="..." /></SelectTrigger>
+                              <SelectContent>{sectors.data?.filter(s => s.parentId === row.unitId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                             </Select>
                           </TableCell>
-
                           <TableCell className="p-1">
-                            <Select value={row.categoryId} onValueChange={(val) => updateRow(row.id, { categoryId: val })}>
-                              <SelectTrigger className="border-none bg-transparent h-9 text-xs font-bold text-primary focus:ring-1">
-                                <SelectValue placeholder="Categoria..." />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {categories.data?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
-                              </SelectContent>
+                            <Select value={row.categoryId} onValueChange={(v) => updateRow(row.id, { categoryId: v })}>
+                              <SelectTrigger className="border-none h-9 text-xs font-bold text-primary"><SelectValue placeholder="..." /></SelectTrigger>
+                              <SelectContent>{categories.data?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}</SelectContent>
                             </Select>
                           </TableCell>
-
                           <TableCell className="p-1">
-                            <Select value={row.subcategoryId} onValueChange={(val) => updateRow(row.id, { subcategoryId: val })} disabled={!row.categoryId}>
-                              <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder={row.categoryId ? "Subcat..." : "---"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {subcategories.data?.filter(s => s.parentId === row.categoryId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
-                              </SelectContent>
+                            <Select value={row.subcategoryId} onValueChange={(v) => updateRow(row.id, { subcategoryId: v })} disabled={!row.categoryId}>
+                              <SelectTrigger className="border-none h-9 text-xs"><SelectValue placeholder="..." /></SelectTrigger>
+                              <SelectContent>{subcategories.data?.filter(s => s.parentId === row.categoryId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}</SelectContent>
                             </Select>
                           </TableCell>
-
                           <TableCell className="p-1">
-                            <Select value={row.itemId} onValueChange={(val) => updateRow(row.id, { itemId: val })} disabled={!row.subcategoryId}>
-                              <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder={row.subcategoryId ? "Item..." : "---"} />
-                              </SelectTrigger>
-                              <SelectContent>
-                                {items.data?.filter(i => i.parentId === row.subcategoryId).map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
-                              </SelectContent>
+                            <Select value={row.itemId} onValueChange={(v) => updateRow(row.id, { itemId: v })} disabled={!row.subcategoryId}>
+                              <SelectTrigger className="border-none h-9 text-xs"><SelectValue placeholder="..." /></SelectTrigger>
+                              <SelectContent>{items.data?.filter(i => i.parentId === row.subcategoryId).map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}</SelectContent>
                             </Select>
                           </TableCell>
-
                           <TableCell className="p-1">
-                            <Input 
-                              placeholder="Descreva o problema..." 
-                              className="border-none bg-transparent h-9 text-xs focus:ring-1" 
-                              value={row.description} 
-                              onChange={(e) => updateRow(row.id, { description: e.target.value })} 
-                            />
+                            <Input placeholder="O que houve?" className="border-none h-9 text-xs" value={row.description} onChange={(e) => updateRow(row.id, { description: e.target.value })} />
                           </TableCell>
-
                           <TableCell className="p-1">
-                            <Input 
-                              placeholder="Descreva a solução..." 
-                              className="border-none bg-transparent h-9 text-xs focus:ring-1" 
-                              value={row.resolution} 
-                              onChange={(e) => updateRow(row.id, { resolution: e.target.value })} 
-                            />
+                            <Input placeholder="O que foi feito?" className="border-none h-9 text-xs" value={row.resolution} onChange={(e) => updateRow(row.id, { resolution: e.target.value })} />
                           </TableCell>
-
                           <TableCell className="p-1 text-center">
-                            <Button 
-                              size="icon" 
-                              variant="ghost" 
-                              className={cn(
-                                "h-8 w-8 text-primary hover:bg-primary/10 transition-all",
-                                row.isProcessing && "animate-pulse"
-                              )}
-                              onClick={() => handleAIRow(row.id)}
-                              disabled={row.isProcessing || isSavingAll}
-                            >
-                              {row.isProcessing ? (
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                              ) : (
-                                <Sparkles className="w-4 h-4" />
-                              )}
+                            <Button size="icon" variant="ghost" onClick={() => handleAIRow(row.id)} disabled={row.isProcessing} className="h-8 w-8 text-primary">
+                              {row.isProcessing ? <Loader2 className="w-3 h-3 animate-spin" /> : <Sparkles className="w-3 h-3" />}
                             </Button>
                           </TableCell>
-
                           <TableCell className="p-1 text-center">
-                            {index !== rows.length - 1 && (
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeRow(row.id)} disabled={isSavingAll}>
-                                <Trash2 className="w-4 h-4" />
-                              </Button>
-                            )}
+                            {idx !== rows.length - 1 && <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeRow(row.id)}><Trash2 className="w-3 h-3" /></Button>}
                           </TableCell>
                         </TableRow>
                       ))}
@@ -414,12 +294,9 @@ export default function PersonalRegistryPage() {
                 </div>
                 <ScrollBar orientation="horizontal" />
               </ScrollArea>
-              
-              <div className="p-4 bg-muted/20 border-t flex justify-between items-center text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
-                <div className="flex gap-4">
-                  <span className="flex items-center gap-1"><Info className="w-3 h-3" /> Ao finalizar, a IA revisará todos os relatos para garantir um histórico profissional.</span>
-                </div>
-                <div className="text-primary">{rows.length - 1} Registros no Rascunho</div>
+              <div className="p-3 bg-muted/20 border-t flex justify-between items-center text-[10px] font-bold uppercase text-muted-foreground tracking-widest">
+                <span className="flex items-center gap-1"><Info className="w-3 h-3" /> Ao finalizar, a IA revisará e redigirá todos os relatórios automaticamente.</span>
+                <span>{rows.length - 1} Itens em Rascunho</span>
               </div>
             </Card>
           </main>
@@ -427,4 +304,8 @@ export default function PersonalRegistryPage() {
       </div>
     </SidebarProvider>
   )
+}
+
+function validRowsCount(rows: RowData[]) {
+  return rows.filter(r => r.categoryId && (r.description || r.resolution)).length;
 }
