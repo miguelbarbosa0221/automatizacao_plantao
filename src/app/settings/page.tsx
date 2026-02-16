@@ -1,7 +1,7 @@
 
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState } from "react";
 import { AppSidebar } from "@/components/app-sidebar";
 import { SidebarInset, SidebarTrigger, SidebarProvider } from "@/components/ui/sidebar";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -10,10 +10,10 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Trash2, Plus, Building2, Layers, Tag, ChevronRight, Info, AlertCircle } from "lucide-react";
+import { Trash2, Plus, Building2, Layers, Tag, ChevronRight, Info, AlertCircle, Pencil, Check, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useUser, useFirestore, useCollection, useMemoFirebase } from "@/firebase";
-import { collection, doc, setDoc, deleteDoc } from "firebase/firestore";
+import { collection, doc, setDoc, deleteDoc, updateDoc } from "firebase/firestore";
 import { cn } from "@/lib/utils";
 
 interface CatalogItem {
@@ -22,7 +22,6 @@ interface CatalogItem {
   parentId?: string;
 }
 
-// Mapeamento explícito para evitar erros de pluralização automática (ex: categorys vs categories)
 const COLLECTION_MAP: Record<string, string> = {
   unit: "units",
   sector: "sectors",
@@ -37,10 +36,13 @@ export default function SettingsPage() {
   const { toast } = useToast();
   const [isLoading, setIsLoading] = useState(false);
 
-  // Estados de Seleção para Navegação em Cascata
+  // Estados de Seleção
   const [selectedUnitId, setSelectedUnitId] = useState<string | null>(null);
   const [selectedCategoryId, setSelectedCategoryId] = useState<string | null>(null);
   const [selectedSubcategoryId, setSelectedSubcategoryId] = useState<string | null>(null);
+
+  // Estado para Edição (Renomear)
+  const [renamingState, setRenamingState] = useState<{ id: string; type: string; name: string } | null>(null);
 
   // Estados para Novos Itens
   const [newName, setNewName] = useState({
@@ -82,11 +84,27 @@ export default function SettingsPage() {
     }
   };
 
+  const handleRename = async () => {
+    if (!renamingState || !user?.uid || !db) return;
+    const { id, type, name } = renamingState;
+    const collectionName = COLLECTION_MAP[type];
+    
+    if (!name.trim() || !collectionName) return;
+
+    try {
+      const docRef = doc(db, "users", user.uid, collectionName, id);
+      await updateDoc(docRef, { name: name.trim() });
+      setRenamingState(null);
+      toast({ title: "Nome atualizado!" });
+    } catch (error: any) {
+      toast({ variant: "destructive", title: "Erro ao renomear." });
+    }
+  };
+
   const handleRemove = async (type: string, id: string) => {
     const collectionName = COLLECTION_MAP[type];
     if (!user?.uid || !db || !collectionName) return;
 
-    // Proteção de Hierarquia: Não remover pais com filhos
     const hasChildren = 
       (type === 'unit' && sectors.data?.some(s => s.parentId === id)) ||
       (type === 'category' && subcategories.data?.some(s => s.parentId === id)) ||
@@ -96,7 +114,7 @@ export default function SettingsPage() {
       toast({ 
         variant: "destructive", 
         title: "Operação Bloqueada", 
-        description: "Este item possui dependências vinculadas. Remova os itens filhos primeiro." 
+        description: "Este item possui dependências. Remova os filhos primeiro." 
       });
       return;
     }
@@ -104,14 +122,63 @@ export default function SettingsPage() {
     try {
       await deleteDoc(doc(db, "users", user.uid, collectionName, id));
       toast({ title: "Item removido." });
-      
-      // Resetar seleção se o item removido for o atual
       if (id === selectedUnitId) setSelectedUnitId(null);
       if (id === selectedCategoryId) { setSelectedCategoryId(null); setSelectedSubcategoryId(null); }
       if (id === selectedSubcategoryId) setSelectedSubcategoryId(null);
     } catch (error: any) {
       toast({ variant: "destructive", title: "Erro ao remover." });
     }
+  };
+
+  const renderItemActions = (type: string, item: CatalogItem, isSelected: boolean) => (
+    <div className="flex items-center gap-1">
+      <Button 
+        size="icon" variant="ghost" className={cn("h-7 w-7 opacity-0 group-hover:opacity-100", isSelected && "opacity-100")}
+        onClick={(e) => { e.stopPropagation(); setRenamingState({ id: item.id, type, name: item.name }); }}
+      >
+        <Pencil className={cn("w-3 h-3 text-muted-foreground hover:text-primary", isSelected && "text-white/70")} />
+      </Button>
+      <Button 
+        size="icon" variant="ghost" className={cn("h-7 w-7 opacity-0 group-hover:opacity-100", isSelected && "opacity-100")}
+        onClick={(e) => { e.stopPropagation(); handleRemove(type, item.id); }}
+      >
+        <Trash2 className={cn("w-3 h-3 text-muted-foreground hover:text-destructive", isSelected && "text-white/70")} />
+      </Button>
+    </div>
+  );
+
+  const renderEditableContent = (type: string, item: CatalogItem, isSelected: boolean) => {
+    if (renamingState?.id === item.id) {
+      return (
+        <div className="flex items-center gap-2 w-full" onClick={(e) => e.stopPropagation()}>
+          <Input 
+            autoFocus
+            className="h-7 text-xs py-0 px-2"
+            value={renamingState.name}
+            onChange={(e) => setRenamingState({ ...renamingState, name: e.target.value })}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') handleRename();
+              if (e.key === 'Escape') setRenamingState(null);
+            }}
+            onBlur={handleRename}
+          />
+          <Check className="w-3 h-3 text-green-500 cursor-pointer" onClick={handleRename} />
+          <X className="w-3 h-3 text-red-500 cursor-pointer" onClick={() => setRenamingState(null)} />
+        </div>
+      );
+    }
+
+    return (
+      <div className="flex items-center justify-between w-full">
+        <span className={cn("truncate flex-1 text-sm", isSelected && "font-bold")}>{item.name}</span>
+        <div className="flex items-center gap-1">
+          {renderItemActions(type, item, isSelected)}
+          {(type === 'unit' || type === 'category' || type === 'subcategory') && (
+            <ChevronRight className={cn("w-4 h-4 opacity-30 ml-1", isSelected && "opacity-100")} />
+          )}
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -122,7 +189,7 @@ export default function SettingsPage() {
           <header className="flex h-16 shrink-0 items-center justify-between border-b px-6 bg-card">
             <div className="flex items-center gap-2">
               <SidebarTrigger />
-              <h1 className="text-xl font-bold tracking-tight">Configurações do Catálogo</h1>
+              <h1 className="text-xl font-bold tracking-tight">Configurações do Meu Catálogo</h1>
             </div>
           </header>
 
@@ -133,19 +200,16 @@ export default function SettingsPage() {
                   <Building2 className="w-4 h-4" /> Estrutura
                 </TabsTrigger>
                 <TabsTrigger value="taxonomy" className="gap-2">
-                  <Tag className="w-4 h-4" /> Taxonomia
+                  <Tag className="w-4 h-4" /> Classificação
                 </TabsTrigger>
               </TabsList>
 
               <TabsContent value="organizational" className="flex-1 mt-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-bold uppercase flex items-center gap-2">1. Unidades</CardTitle>
-                      <CardDescription className="text-xs">Onde o problema aconteceu?</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col gap-4 p-0">
-                      <div className="px-6 pb-4 flex gap-2">
+                    <CardHeader className="pb-3 bg-muted/20 border-b">
+                      <CardTitle className="text-sm font-bold uppercase">1. Unidades</CardTitle>
+                      <div className="flex gap-2 mt-2">
                         <Input 
                           placeholder="Nova Unidade..." 
                           value={newName.unit} 
@@ -153,85 +217,59 @@ export default function SettingsPage() {
                           onKeyDown={(e) => e.key === 'Enter' && handleAdd('unit')}
                           className="h-9 text-xs"
                         />
-                        <Button size="sm" onClick={() => handleAdd('unit')} disabled={isLoading}>
-                          <Plus className="w-4 h-4" />
-                        </Button>
+                        <Button size="sm" onClick={() => handleAdd('unit')} disabled={isLoading}><Plus className="w-4 h-4" /></Button>
                       </div>
-                      <Separator />
-                      <ScrollArea className="flex-1">
-                        <div className="p-2 space-y-1">
-                          {units.data?.map(unit => (
-                            <div 
-                              key={unit.id}
-                              onClick={() => setSelectedUnitId(unit.id)}
-                              className={cn(
-                                "flex items-center justify-between p-3 rounded-md cursor-pointer group transition-colors",
-                                selectedUnitId === unit.id ? "bg-primary/10 border-l-4 border-primary" : "hover:bg-muted"
-                              )}
-                            >
-                              <span className={cn("text-sm", selectedUnitId === unit.id && "font-bold text-primary")}>
-                                {unit.name}
-                              </span>
-                              <div className="flex items-center gap-2">
-                                <Button 
-                                  size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                                  onClick={(e) => { e.stopPropagation(); handleRemove('unit', unit.id); }}
-                                >
-                                  <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
-                                </Button>
-                                <ChevronRight className={cn("w-4 h-4 opacity-30", selectedUnitId === unit.id && "opacity-100 text-primary")} />
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      </ScrollArea>
-                    </CardContent>
+                    </CardHeader>
+                    <ScrollArea className="flex-1">
+                      <div className="p-2 space-y-1">
+                        {units.data?.map(unit => (
+                          <div 
+                            key={unit.id}
+                            onClick={() => setSelectedUnitId(unit.id)}
+                            className={cn(
+                              "flex items-center p-3 rounded-md cursor-pointer group transition-colors",
+                              selectedUnitId === unit.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
+                            )}
+                          >
+                            {renderEditableContent('unit', unit, selectedUnitId === unit.id)}
+                          </div>
+                        ))}
+                      </div>
+                    </ScrollArea>
                   </Card>
 
                   <Card className="flex flex-col h-full overflow-hidden">
-                    <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-bold uppercase flex items-center gap-2">2. Setores</CardTitle>
-                      <CardDescription className="text-xs">Locais específicos da unidade.</CardDescription>
-                    </CardHeader>
-                    <CardContent className="flex-1 flex flex-col gap-4 p-0">
+                    <CardHeader className="pb-3 bg-muted/20 border-b">
+                      <CardTitle className="text-sm font-bold uppercase">2. Setores</CardTitle>
                       {selectedUnitId ? (
-                        <>
-                          <div className="px-6 pb-4 flex gap-2">
-                            <Input 
-                              placeholder="Novo Setor..." 
-                              value={newName.sector} 
-                              onChange={(e) => setNewName(prev => ({ ...prev, sector: e.target.value }))}
-                              onKeyDown={(e) => e.key === 'Enter' && handleAdd('sector', selectedUnitId)}
-                              className="h-9 text-xs"
-                            />
-                            <Button size="sm" onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading}>
-                              <Plus className="w-4 h-4" />
-                            </Button>
-                          </div>
-                          <Separator />
-                          <ScrollArea className="flex-1">
-                            <div className="p-2 space-y-1">
-                              {sectors.data?.filter(s => s.parentId === selectedUnitId).map(sector => (
-                                <div key={sector.id} className="flex items-center justify-between p-3 rounded-md hover:bg-muted group">
-                                  <span className="text-sm">{sector.name}</span>
-                                  <Button 
-                                    size="icon" variant="ghost" className="h-7 w-7 opacity-0 group-hover:opacity-100"
-                                    onClick={() => handleRemove('sector', sector.id)}
-                                  >
-                                    <Trash2 className="w-3.5 h-3.5 text-muted-foreground hover:text-destructive" />
-                                  </Button>
-                                </div>
-                              ))}
+                        <div className="flex gap-2 mt-2">
+                          <Input 
+                            placeholder="Novo Setor..." 
+                            value={newName.sector} 
+                            onChange={(e) => setNewName(prev => ({ ...prev, sector: e.target.value }))}
+                            onKeyDown={(e) => e.key === 'Enter' && handleAdd('sector', selectedUnitId)}
+                            className="h-9 text-xs"
+                          />
+                          <Button size="sm" onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading}><Plus className="w-4 h-4" /></Button>
+                        </div>
+                      ) : <div className="h-9 mt-2" />}
+                    </CardHeader>
+                    <ScrollArea className="flex-1">
+                      {selectedUnitId ? (
+                        <div className="p-2 space-y-1">
+                          {sectors.data?.filter(s => s.parentId === selectedUnitId).map(sector => (
+                            <div key={sector.id} className="flex items-center p-3 rounded-md hover:bg-muted group">
+                              {renderEditableContent('sector', sector, false)}
                             </div>
-                          </ScrollArea>
-                        </>
+                          ))}
+                        </div>
                       ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-6 text-center text-muted-foreground opacity-40">
+                        <div className="flex-1 flex flex-col items-center justify-center p-10 text-muted-foreground opacity-40">
                           <Building2 className="w-12 h-12 mb-2" />
-                          <p className="text-xs">Selecione uma Unidade para ver os Setores.</p>
+                          <p className="text-xs">Selecione uma Unidade</p>
                         </div>
                       )}
-                    </CardContent>
+                    </ScrollArea>
                   </Card>
                 </div>
               </TabsContent>
@@ -243,7 +281,7 @@ export default function SettingsPage() {
                       <CardTitle className="text-xs font-bold uppercase">1. Categorias</CardTitle>
                       <div className="flex gap-2 mt-2">
                         <Input 
-                          placeholder="Novo..." value={newName.category} 
+                          placeholder="Nova..." value={newName.category} 
                           onChange={(e) => setNewName(prev => ({ ...prev, category: e.target.value }))}
                           onKeyDown={(e) => e.key === 'Enter' && handleAdd('category')}
                           className="h-8 text-[10px]"
@@ -258,18 +296,11 @@ export default function SettingsPage() {
                             key={cat.id}
                             onClick={() => { setSelectedCategoryId(cat.id); setSelectedSubcategoryId(null); }}
                             className={cn(
-                              "flex items-center justify-between p-2.5 rounded cursor-pointer group text-xs",
-                              selectedCategoryId === cat.id ? "bg-primary text-primary-foreground font-bold" : "hover:bg-muted"
+                              "flex items-center p-2.5 rounded cursor-pointer group text-xs",
+                              selectedCategoryId === cat.id ? "bg-primary text-primary-foreground" : "hover:bg-muted"
                             )}
                           >
-                            <span className="truncate flex-1">{cat.name}</span>
-                            <div className="flex items-center gap-1">
-                              <Trash2 
-                                className={cn("w-3 h-3 opacity-0 group-hover:opacity-100 hover:text-red-400", selectedCategoryId === cat.id && "text-white/70")}
-                                onClick={(e) => { e.stopPropagation(); handleRemove('category', cat.id); }}
-                              />
-                              <ChevronRight className={cn("w-3 h-3", selectedCategoryId === cat.id ? "opacity-100" : "opacity-20")} />
-                            </div>
+                            {renderEditableContent('category', cat, selectedCategoryId === cat.id)}
                           </div>
                         ))}
                       </div>
@@ -282,16 +313,14 @@ export default function SettingsPage() {
                       {selectedCategoryId ? (
                         <div className="flex gap-2 mt-2">
                           <Input 
-                            placeholder="Novo..." value={newName.subcategory} 
+                            placeholder="Nova..." value={newName.subcategory} 
                             onChange={(e) => setNewName(prev => ({ ...prev, subcategory: e.target.value }))}
                             onKeyDown={(e) => e.key === 'Enter' && handleAdd('subcategory', selectedCategoryId)}
                             className="h-8 text-[10px]"
                           />
                           <Button size="icon" className="h-8 w-8" onClick={() => handleAdd('subcategory', selectedCategoryId)}><Plus className="w-4 h-4" /></Button>
                         </div>
-                      ) : (
-                        <div className="h-8 mt-2" />
-                      )}
+                      ) : <div className="h-8 mt-2" />}
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       {selectedCategoryId ? (
@@ -301,23 +330,16 @@ export default function SettingsPage() {
                               key={sub.id}
                               onClick={() => setSelectedSubcategoryId(sub.id)}
                               className={cn(
-                                "flex items-center justify-between p-2.5 rounded cursor-pointer group text-xs",
-                                selectedSubcategoryId === sub.id ? "bg-accent text-accent-foreground font-bold" : "hover:bg-muted"
+                                "flex items-center p-2.5 rounded cursor-pointer group text-xs",
+                                selectedSubcategoryId === sub.id ? "bg-accent text-accent-foreground" : "hover:bg-muted"
                               )}
                             >
-                              <span className="truncate flex-1">{sub.name}</span>
-                              <div className="flex items-center gap-1">
-                                <Trash2 
-                                  className="w-3 h-3 opacity-0 group-hover:opacity-100 hover:text-red-400"
-                                  onClick={(e) => { e.stopPropagation(); handleRemove('subcategory', sub.id); }}
-                                />
-                                <ChevronRight className={cn("w-3 h-3", selectedSubcategoryId === sub.id ? "opacity-100" : "opacity-20")} />
-                              </div>
+                              {renderEditableContent('subcategory', sub, selectedSubcategoryId === sub.id)}
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground opacity-30 text-[10px]">
+                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-muted-foreground opacity-30 text-[10px]">
                           <Info className="w-6 h-6 mb-1" /> Selecione uma Categoria
                         </div>
                       )}
@@ -337,25 +359,19 @@ export default function SettingsPage() {
                           />
                           <Button size="icon" className="h-8 w-8" onClick={() => handleAdd('item', selectedSubcategoryId)}><Plus className="w-4 h-4" /></Button>
                         </div>
-                      ) : (
-                        <div className="h-8 mt-2" />
-                      )}
+                      ) : <div className="h-8 mt-2" />}
                     </CardHeader>
                     <ScrollArea className="flex-1">
                       {selectedSubcategoryId ? (
                         <div className="p-1 space-y-0.5">
                           {items.data?.filter(i => i.parentId === selectedSubcategoryId).map(item => (
-                            <div key={item.id} className="flex items-center justify-between p-2.5 rounded hover:bg-muted group text-xs">
-                              <span className="truncate flex-1">{item.name}</span>
-                              <Trash2 
-                                className="w-3 h-3 opacity-0 group-hover:opacity-100 hover:text-red-400 cursor-pointer"
-                                onClick={() => handleRemove('item', item.id)}
-                              />
+                            <div key={item.id} className="flex items-center p-2.5 rounded hover:bg-muted group text-xs">
+                              {renderEditableContent('item', item, false)}
                             </div>
                           ))}
                         </div>
                       ) : (
-                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-center text-muted-foreground opacity-30 text-[10px]">
+                        <div className="flex-1 flex flex-col items-center justify-center p-8 text-muted-foreground opacity-30 text-[10px]">
                           <Layers className="w-6 h-6 mb-1" /> Selecione uma Subcategoria
                         </div>
                       )}
@@ -368,8 +384,8 @@ export default function SettingsPage() {
             <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 text-amber-800 text-[10px]">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <p>
-                <strong>Integridade dos Dados:</strong> Itens que possuem vínculos não podem ser excluídos. 
-                Remova primeiro os itens filhos para liberar a exclusão do item principal.
+                <strong>Gestão Hierárquica:</strong> Você pode adicionar, remover e agora renomear qualquer item clicando no ícone do lápis. 
+                Ao renomear uma Categoria, seus vínculos com Subcategorias e Itens permanecem intactos.
               </p>
             </div>
           </main>
