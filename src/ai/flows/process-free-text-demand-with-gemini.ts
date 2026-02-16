@@ -1,19 +1,19 @@
 'use server';
 
 /**
- * @fileOverview Processes free-text and structured IT support demands using Gemini.
+ * @fileOverview Processa demandas de suporte de TI utilizando Gemini com persona de Service Desk.
  *
- * This file defines a Genkit flow that takes a description of an IT issue,
- * extracts/summarizes it into a title, technical description, and resolution.
+ * Este fluxo transforma relatos brutos em documentação técnica profissional,
+ * utilizando o contexto de localização e taxonomia para enriquecer os detalhes.
  *
- * @exports processFreeTextDemandWithGemini - The main function to process the demand.
+ * @exports processFreeTextDemandWithGemini - Função principal de processamento.
  */
 
 import {ai} from '@/ai/genkit';
 import {z} from 'genkit';
 
 const ProcessFreeTextDemandWithGeminiInputSchema = z.object({
-  freeText: z.string().describe('Texto livre ou estruturado da demanda de suporte de TI.'),
+  freeText: z.string().describe('Texto livre ou estruturado contendo contexto da demanda.'),
 });
 
 export type ProcessFreeTextDemandWithGeminiInput = z.infer<
@@ -21,13 +21,13 @@ export type ProcessFreeTextDemandWithGeminiInput = z.infer<
 >;
 
 const ProcessFreeTextDemandWithGeminiOutputSchema = z.object({
-  title: z.string().describe('Um título conciso resumindo a demanda.'),
+  title: z.string().describe('Título técnico e profissional conciso.'),
   description: z
     .string()
-    .describe('Um relato do problema na persona de um usuário final.'),
+    .describe('Relato do problema na persona de um usuário final sério.'),
   resolution: z
     .string()
-    .describe('Um resumo técnico curto dos passos de resolução.'),
+    .describe('Passos técnicos de resolução em português formal.'),
 });
 
 export type ProcessFreeTextDemandWithGeminiOutput = z.infer<
@@ -44,22 +44,22 @@ const processFreeTextDemandPrompt = ai.definePrompt({
   name: 'processFreeTextDemandPrompt',
   input: {schema: ProcessFreeTextDemandWithGeminiInputSchema},
   output: {schema: ProcessFreeTextDemandWithGeminiOutputSchema},
-  prompt: `Você é um assistente de IA especializado em suporte de TI (Service Desk).
-  Sua tarefa é processar os dados fornecidos e gerar um resumo extremamente CONCISO e em PORTUGUÊS (pt-BR).
+  prompt: `Você é um Analista de Service Desk Sênior especializado em documentação técnica.
+  Sua tarefa é transformar os dados brutos de um atendimento em um relatório profissional e formal em PORTUGUÊS (pt-BR).
 
-  REGRAS DE CONTEÚDO:
-  1. Idioma: Português do Brasil (pt-BR).
-  2. Título: Gere um título estritamente TÉCNICO e PROFISSIONAL baseado na classificação (Categoria/Subcategoria/Item). Máximo de 8 palavras. (Ex: "Manutenção Preventiva - Estação de Trabalho").
-  3. Descrição: Adote a persona de um 'USUÁRIO FINAL' relatando o problema de forma simples e leiga, como se estivesse abrindo o chamado. (Ex: "Minha tela ficou preta e não consigo acessar os sistemas").
-  4. Resolução: Resuma a ação técnica tomada de forma direta e concisa.
+  DIRETRIZES DE PERSONA:
+  1. TÍTULO: Deve ser estritamente técnico e objetivo. Use substantivos concretos (Ex: "Falha de Conectividade em Impressora Térmica" ou "Manutenção em Estação de Trabalho").
+  2. DESCRIÇÃO: Adote a persona de um "USUÁRIO FINAL" relatando o problema. O texto deve ser sério, detalhado e explicar o impacto do problema nas atividades. Use as informações de Categoria/Subcategoria para inferir detalhes lógicos (Ex: Se for Hardware/Mouse, mencione falha de cursor ou clique).
+  3. RESOLUÇÃO: Descreva a ação técnica tomada de forma direta, usando verbos no infinitivo ou particípio, com linguagem formal de TI.
 
-  IMPORTANTE: O texto abaixo pode conter rótulos como "LOCALIZAÇÃO:", "CATEGORIA:", "SUBCATEGORIA:", "ITEM:", "INFORMAÇÃO LIVRE:", "DETALHES:". 
-  Use TODAS essas informações para construir a resposta mais precisa possível. O campo "INFORMAÇÃO LIVRE" deve ser usado para entender o contexto do relato do usuário.
+  ESTRUTURA DE ENTRADA:
+  O texto recebido conterá rótulos como LOCALIZAÇÃO, CATEGORIA, SUBCATEGORIA, ITEM e DETALHES. 
+  Use a LOCALIZAÇÃO e a CATEGORIA para dar contexto ao relatório.
 
-  Texto para processar: 
+  ENTRADA: 
   {{{freeText}}}
 
-  Forneça a saída estruturada em português, sem preâmbulos.
+  REQUISITO FINAL: Forneça apenas a saída estruturada JSON, sem explicações. Linguagem: Português formal (Brasil).
 `,
 });
 

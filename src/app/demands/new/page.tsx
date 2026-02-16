@@ -1,4 +1,3 @@
-
 "use client"
 
 import { AppSidebar } from "@/components/app-sidebar"
@@ -55,6 +54,7 @@ export default function PersonalRegistryPage() {
 
   const [rows, setRows] = useState<RowData[]>([]);
   const [isSavingAll, setIsSavingAll] = useState(false);
+  const [isGeneratingAI, setIsGeneratingAI] = useState(false);
   const [isLoadedFromDraft, setIsLoadedFromDraft] = useState(false);
 
   // Inicialização e Carregamento de Rascunho
@@ -115,6 +115,23 @@ export default function PersonalRegistryPage() {
     });
   }, []);
 
+  const getRowContext = (row: RowData) => {
+    const catName = categories.data?.find(c => c.id === row.categoryId)?.name || "";
+    const subName = subcategories.data?.find(s => s.id === row.subcategoryId)?.name || "";
+    const itemName = items.data?.find(i => i.id === row.itemId)?.name || "";
+    const unitName = units.data?.find(u => u.id === row.unitId)?.name || "";
+    const sectorName = sectors.data?.find(s => s.id === row.sectorId)?.name || "";
+
+    return `
+      LOCALIZAÇÃO: ${unitName} / ${sectorName}
+      CATEGORIA: ${catName}
+      SUBCATEGORIA: ${subName}
+      ITEM: ${itemName}
+      DETALHES: ${row.description || "Sem descrição"}
+      AÇÃO: ${row.resolution || "Sem resolução informada"}
+    `.trim();
+  }
+
   const handleAIRow = async (id: string) => {
     const row = rows.find(r => r.id === id);
     if (!row) return;
@@ -124,26 +141,10 @@ export default function PersonalRegistryPage() {
       return;
     }
 
-    // Get names for context
-    const catName = categories.data?.find(c => c.id === row.categoryId)?.name || "";
-    const subName = subcategories.data?.find(s => s.id === row.subcategoryId)?.name || "";
-    const itemName = items.data?.find(i => i.id === row.itemId)?.name || "";
-    const unitName = units.data?.find(u => u.id === row.unitId)?.name || "";
-    const sectorName = sectors.data?.find(s => s.id === row.sectorId)?.name || "";
-
-    const contextText = `
-      LOCALIZAÇÃO: ${unitName} / ${sectorName}
-      CATEGORIA: ${catName}
-      SUBCATEGORIA: ${subName}
-      ITEM: ${itemName}
-      DETALHES DO RELATO: ${row.description || "Sem descrição"}
-      AÇÃO ATUAL: ${row.resolution || "Pendente"}
-    `.trim();
-
     updateRow(id, { isProcessing: true });
 
     try {
-      const result = await processFreeTextDemandWithGemini({ freeText: contextText });
+      const result = await processFreeTextDemandWithGemini({ freeText: getRowContext(row) });
       updateRow(id, { 
         description: result.description, 
         resolution: result.resolution,
@@ -163,19 +164,36 @@ export default function PersonalRegistryPage() {
   };
 
   const handleBatchSave = async () => {
-    const rowsToSave = rows.filter(r => r.categoryId && (r.description || r.resolution));
+    const rowsToProcess = rows.filter(r => r.categoryId && (r.description || r.resolution));
 
-    if (rowsToSave.length === 0) {
+    if (rowsToProcess.length === 0) {
       toast({ title: "Dados incompletos", description: "Preencha ao menos uma categoria e um relato.", variant: "destructive" });
       return;
     }
 
     if (!user || !db) return;
+    
     setIsSavingAll(true);
-    const batch = writeBatch(db);
+    setIsGeneratingAI(true);
 
     try {
-      rowsToSave.forEach((row) => {
+      const batch = writeBatch(db);
+      
+      // 1. Processar todas as linhas pela IA antes de salvar (Professional Enrichement)
+      const enrichedResults = await Promise.all(rowsToProcess.map(async (row) => {
+        try {
+          const aiResult = await processFreeTextDemandWithGemini({ freeText: getRowContext(row) });
+          return { ...row, ...aiResult };
+        } catch (e) {
+          console.error("Erro no enriquecimento em lote:", e);
+          return row; // Fallback para os dados originais se falhar
+        }
+      }));
+
+      setIsGeneratingAI(false); // Fim da fase de IA
+
+      // 2. Gravar no Firestore
+      enrichedResults.forEach((row) => {
         const demandId = Math.random().toString(36).substr(2, 9);
         const demandRef = doc(db, "users", user.uid, "demands", demandId);
         
@@ -189,9 +207,9 @@ export default function PersonalRegistryPage() {
           id: demandId,
           userId: user.uid,
           timestamp: new Date().toISOString(),
-          title: row.aiTitle || `${catName} - ${itemName || subName || 'Geral'}`,
-          description: row.description || `Demanda de ${catName}`,
-          resolution: row.resolution || "Pendente",
+          title: row.title || row.aiTitle || `${catName} - ${itemName || subName || 'Geral'}`,
+          description: row.description,
+          resolution: row.resolution,
           source: 'structured',
           unitId: row.unitId,
           unitName,
@@ -208,12 +226,13 @@ export default function PersonalRegistryPage() {
 
       await batch.commit();
       localStorage.removeItem(`${STORAGE_KEY}_${user.uid}`);
-      toast({ title: "Plantão Finalizado!", description: `${rowsToSave.length} registros salvos.` });
+      toast({ title: "Plantão Finalizado!", description: `${enrichedResults.length} registros enriquecidos e salvos.` });
       router.push("/demands/history");
     } catch (error: any) {
       toast({ title: "Erro no salvamento", description: error.message, variant: "destructive" });
     } finally {
       setIsSavingAll(false);
+      setIsGeneratingAI(false);
     }
   };
 
@@ -234,14 +253,41 @@ export default function PersonalRegistryPage() {
                   <History className="w-3 h-3 mr-1" /> Rascunho Ativo
                 </Badge>
               )}
-              <Button onClick={handleBatchSave} disabled={isSavingAll} className="gap-2 font-bold">
-                {isSavingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
-                Salvar Tudo ({rows.filter(r => r.categoryId && (r.description || r.resolution)).length})
+              <Button onClick={handleBatchSave} disabled={isSavingAll} className="gap-2 font-bold min-w-[180px]">
+                {isSavingAll ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    {isGeneratingAI ? "IA Redigindo..." : "Salvando..."}
+                  </>
+                ) : (
+                  <>
+                    <ClipboardCheck className="w-4 h-4" />
+                    Finalizar Plantão ({rows.filter(r => r.categoryId && (r.description || r.resolution)).length})
+                  </>
+                )}
               </Button>
             </div>
           </header>
           
-          <main className="flex-1 overflow-hidden flex flex-col p-4 bg-slate-50/40">
+          <main className="flex-1 overflow-hidden flex flex-col p-4 bg-slate-50/40 relative">
+            {/* Overlay Global de Processamento */}
+            {isGeneratingAI && (
+              <div className="absolute inset-0 z-50 bg-white/60 backdrop-blur-sm flex items-center justify-center flex-col gap-4 animate-in fade-in duration-500">
+                <div className="p-8 bg-white shadow-2xl rounded-2xl border border-primary/20 flex flex-col items-center gap-6 max-w-sm text-center">
+                  <div className="relative">
+                    <Sparkles className="w-12 h-12 text-primary animate-pulse" />
+                    <Loader2 className="w-16 h-16 text-primary/20 animate-spin absolute -inset-2" />
+                  </div>
+                  <div className="space-y-2">
+                    <h3 className="text-lg font-bold">Inteligência Artificial Ativa</h3>
+                    <p className="text-sm text-muted-foreground leading-relaxed">
+                      Aguarde um momento enquanto o Gemini redige os relatórios técnicos e profissionaliza o seu histórico.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+
             <Card className="border shadow-lg flex-1 flex flex-col overflow-hidden bg-card">
               <ScrollArea className="flex-1 w-full">
                 <div className="min-w-[1500px]">
@@ -344,7 +390,7 @@ export default function PersonalRegistryPage() {
                                 row.isProcessing && "animate-pulse"
                               )}
                               onClick={() => handleAIRow(row.id)}
-                              disabled={row.isProcessing}
+                              disabled={row.isProcessing || isSavingAll}
                             >
                               {row.isProcessing ? (
                                 <Loader2 className="w-4 h-4 animate-spin" />
@@ -356,7 +402,7 @@ export default function PersonalRegistryPage() {
 
                           <TableCell className="p-1 text-center">
                             {index !== rows.length - 1 && (
-                              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeRow(row.id)}>
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeRow(row.id)} disabled={isSavingAll}>
                                 <Trash2 className="w-4 h-4" />
                               </Button>
                             )}
@@ -371,7 +417,7 @@ export default function PersonalRegistryPage() {
               
               <div className="p-4 bg-muted/20 border-t flex justify-between items-center text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
                 <div className="flex gap-4">
-                  <span className="flex items-center gap-1"><Info className="w-3 h-3" /> Clique no ícone de IA (Sparkles) para melhorar o relato e sugerir resoluções.</span>
+                  <span className="flex items-center gap-1"><Info className="w-3 h-3" /> Ao finalizar, a IA revisará todos os relatos para garantir um histórico profissional.</span>
                 </div>
                 <div className="text-primary">{rows.length - 1} Registros no Rascunho</div>
               </div>
