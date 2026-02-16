@@ -61,8 +61,9 @@ interface Demand {
   timestamp?: string | { seconds: number }
 }
 
-function CopyableBlock({ label, content, toast }: { label: string, content: string, toast: any }) {
+function CopyableBlock({ label, content, toast, isTitle = false }: { label: string, content: string, toast: any, isTitle?: boolean }) {
   const handleCopy = () => {
+    if (!content) return;
     navigator.clipboard.writeText(content);
     toast({ title: `${label} copiado!`, description: "Texto transferido para a área de transferência." });
   }
@@ -70,13 +71,19 @@ function CopyableBlock({ label, content, toast }: { label: string, content: stri
   return (
     <div 
       onClick={handleCopy}
-      className="group relative cursor-pointer rounded-md border border-transparent hover:border-primary/20 hover:bg-primary/5 p-2 transition-all"
+      className={cn(
+        "group relative cursor-pointer rounded-md border border-transparent hover:border-primary/20 hover:bg-primary/5 p-2 transition-all",
+        isTitle ? "p-0 hover:p-2 -ml-2" : ""
+      )}
     >
       <div className="flex justify-between items-center mb-1">
         <span className="text-[10px] font-bold uppercase text-muted-foreground tracking-wider">{label}</span>
         <Copy className="w-3 h-3 opacity-0 group-hover:opacity-40 transition-opacity" />
       </div>
-      <p className="text-sm whitespace-pre-wrap leading-relaxed text-foreground/90">
+      <p className={cn(
+        "whitespace-pre-wrap leading-relaxed text-foreground/90",
+        isTitle ? "text-lg font-bold" : "text-sm"
+      )}>
         {content || "---"}
       </p>
     </div>
@@ -224,9 +231,14 @@ export default function PersonalHistoryPage() {
                           </DropdownMenuContent>
                         </DropdownMenu>
                       </div>
-                      <CardTitle className="text-lg font-bold mt-3 leading-tight">
-                        {demand.title}
-                      </CardTitle>
+                      <div className="mt-3">
+                        <CopyableBlock 
+                          label="Título do Chamado" 
+                          content={demand.title} 
+                          toast={toast} 
+                          isTitle={true}
+                        />
+                      </div>
                     </CardHeader>
 
                     <CardContent className="flex-1 p-5 space-y-6">
