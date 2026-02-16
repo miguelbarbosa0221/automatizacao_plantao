@@ -22,6 +22,15 @@ interface CatalogItem {
   parentId?: string;
 }
 
+// Mapeamento explícito para evitar erros de pluralização automática (ex: categorys vs categories)
+const COLLECTION_MAP: Record<string, string> = {
+  unit: "units",
+  sector: "sectors",
+  category: "categories",
+  subcategory: "subcategories",
+  item: "items"
+};
+
 export default function SettingsPage() {
   const { user } = useUser();
   const db = useFirestore();
@@ -51,12 +60,13 @@ export default function SettingsPage() {
 
   const handleAdd = async (type: string, parentId?: string | null) => {
     const name = newName[type as keyof typeof newName].trim();
-    if (!name || !user?.uid || !db) return;
+    const collectionName = COLLECTION_MAP[type];
+    
+    if (!name || !user?.uid || !db || !collectionName) return;
 
     setIsLoading(true);
     try {
       const id = Math.random().toString(36).substr(2, 9);
-      const collectionName = `${type}s`; // units, sectors, etc
       await setDoc(doc(db, "users", user.uid, collectionName, id), {
         id,
         name,
@@ -73,7 +83,8 @@ export default function SettingsPage() {
   };
 
   const handleRemove = async (type: string, id: string) => {
-    if (!user?.uid || !db) return;
+    const collectionName = COLLECTION_MAP[type];
+    if (!user?.uid || !db || !collectionName) return;
 
     // Proteção de Hierarquia: Não remover pais com filhos
     const hasChildren = 
@@ -91,8 +102,9 @@ export default function SettingsPage() {
     }
 
     try {
-      await deleteDoc(doc(db, "users", user.uid, `${type}s`, id));
+      await deleteDoc(doc(db, "users", user.uid, collectionName, id));
       toast({ title: "Item removido." });
+      
       // Resetar seleção se o item removido for o atual
       if (id === selectedUnitId) setSelectedUnitId(null);
       if (id === selectedCategoryId) { setSelectedCategoryId(null); setSelectedSubcategoryId(null); }
@@ -125,16 +137,11 @@ export default function SettingsPage() {
                 </TabsTrigger>
               </TabsList>
 
-              {/* ABA A: ESTRUTURA ORGANIZACIONAL (Unidade -> Setor) */}
               <TabsContent value="organizational" className="flex-1 mt-0">
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
-                  
-                  {/* Coluna 1: Unidades */}
                   <Card className="flex flex-col h-full overflow-hidden">
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-bold uppercase flex items-center gap-2">
-                        1. Unidades
-                      </CardTitle>
+                      <CardTitle className="text-sm font-bold uppercase flex items-center gap-2">1. Unidades</CardTitle>
                       <CardDescription className="text-xs">Onde o problema aconteceu?</CardDescription>
                     </CardHeader>
                     <CardContent className="flex-1 flex flex-col gap-4 p-0">
@@ -181,12 +188,9 @@ export default function SettingsPage() {
                     </CardContent>
                   </Card>
 
-                  {/* Coluna 2: Setores */}
                   <Card className="flex flex-col h-full overflow-hidden">
                     <CardHeader className="pb-3">
-                      <CardTitle className="text-sm font-bold uppercase flex items-center gap-2">
-                        2. Setores
-                      </CardTitle>
+                      <CardTitle className="text-sm font-bold uppercase flex items-center gap-2">2. Setores</CardTitle>
                       <CardDescription className="text-xs">Locais específicos da unidade.</CardDescription>
                     </CardHeader>
                     <CardContent className="flex-1 flex flex-col gap-4 p-0">
@@ -218,9 +222,6 @@ export default function SettingsPage() {
                                   </Button>
                                 </div>
                               ))}
-                              {sectors.data?.filter(s => s.parentId === selectedUnitId).length === 0 && (
-                                <div className="text-center py-10 text-xs text-muted-foreground italic">Nenhum setor cadastrado para esta unidade.</div>
-                              )}
                             </div>
                           </ScrollArea>
                         </>
@@ -235,11 +236,8 @@ export default function SettingsPage() {
                 </div>
               </TabsContent>
 
-              {/* ABA B: CLASSIFICAÇÃO/TAXONOMIA (Categoria -> Subcategoria -> Item) */}
               <TabsContent value="taxonomy" className="flex-1 mt-0">
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 h-full">
-                  
-                  {/* Coluna 1: Categorias */}
                   <Card className="flex flex-col h-full overflow-hidden border-r">
                     <CardHeader className="pb-3 border-b bg-muted/20">
                       <CardTitle className="text-xs font-bold uppercase">1. Categorias</CardTitle>
@@ -278,7 +276,6 @@ export default function SettingsPage() {
                     </ScrollArea>
                   </Card>
 
-                  {/* Coluna 2: Subcategorias */}
                   <Card className="flex flex-col h-full overflow-hidden border-r">
                     <CardHeader className="pb-3 border-b bg-muted/20">
                       <CardTitle className="text-xs font-bold uppercase">2. Subcategorias</CardTitle>
@@ -327,7 +324,6 @@ export default function SettingsPage() {
                     </ScrollArea>
                   </Card>
 
-                  {/* Coluna 3: Itens */}
                   <Card className="flex flex-col h-full overflow-hidden">
                     <CardHeader className="pb-3 border-b bg-muted/20">
                       <CardTitle className="text-xs font-bold uppercase">3. Itens (Ação)</CardTitle>
@@ -369,12 +365,11 @@ export default function SettingsPage() {
               </TabsContent>
             </Tabs>
             
-            {/* Aviso de Proteção */}
             <div className="bg-amber-50 border border-amber-200 p-3 rounded-lg flex items-start gap-2 text-amber-800 text-[10px]">
               <AlertCircle className="w-4 h-4 mt-0.5 shrink-0" />
               <p>
-                <strong>Integridade dos Dados:</strong> Itens que possuem vínculos (ex: Categoria com Subcategorias) não podem ser excluídos diretamente. 
-                Remova primeiro as dependências para liberar a exclusão do item principal. Isso garante que seus registros históricos não fiquem órfãos.
+                <strong>Integridade dos Dados:</strong> Itens que possuem vínculos não podem ser excluídos. 
+                Remova primeiro os itens filhos para liberar a exclusão do item principal.
               </p>
             </div>
           </main>
