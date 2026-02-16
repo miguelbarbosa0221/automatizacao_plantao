@@ -11,29 +11,30 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { useState, useMemo, useCallback, useEffect } from "react"
-import { Loader2, Zap, ClipboardCheck, Trash2, Save, History } from "lucide-react"
+import { Loader2, Zap, ClipboardCheck, Trash2, Save, History, Info } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc, writeBatch } from "firebase/firestore"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
 
-const STORAGE_KEY = "plantao_ai_personal_draft";
+const STORAGE_KEY = "plantao_ai_personal_draft_v2";
 
 interface RowData {
   id: string;
-  unitName: string;
-  sector: string;
-  categoryName: string;
-  subcategoryName: string;
-  itemName: string;
-  freeText: string;
-  details: string;
+  unitId: string;
+  sectorId: string;
+  categoryId: string;
+  subcategoryId: string;
+  itemId: string;
+  description: string;
+  resolution: string;
 }
 
 interface CatalogItem {
   id: string;
   name: string;
+  parentId?: string;
 }
 
 export default function PersonalRegistryPage() {
@@ -42,12 +43,12 @@ export default function PersonalRegistryPage() {
   const { user } = useUser()
   const router = useRouter()
 
-  // Queries para dados dinâmicos do catálogo do usuário
+  // Carregar Catálogos
+  const units = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "units") : null, [db, user?.uid]));
+  const sectors = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "sectors") : null, [db, user?.uid]));
   const categories = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "categories") : null, [db, user?.uid]));
   const subcategories = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "subcategories") : null, [db, user?.uid]));
   const items = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "items") : null, [db, user?.uid]));
-  const units = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "units") : null, [db, user?.uid]));
-  const sectors = useCollection<CatalogItem>(useMemoFirebase(() => user?.uid ? collection(db, "users", user.uid, "sectors") : null, [db, user?.uid]));
 
   const [rows, setRows] = useState<RowData[]>([]);
   const [isSavingAll, setIsSavingAll] = useState(false);
@@ -65,20 +66,9 @@ export default function PersonalRegistryPage() {
           setIsLoadedFromDraft(true);
           return;
         }
-      } catch (e) {
-        console.error("Erro ao carregar rascunho", e);
-      }
+      } catch (e) { console.error("Erro ao carregar rascunho", e); }
     }
-    setRows([{ 
-      id: Math.random().toString(36).substr(2, 9), 
-      unitName: "", 
-      sector: "", 
-      categoryName: "", 
-      subcategoryName: "", 
-      itemName: "", 
-      freeText: "", 
-      details: "" 
-    }]);
+    setRows([{ id: Math.random().toString(36).substr(2, 9), unitId: "", sectorId: "", categoryId: "", subcategoryId: "", itemId: "", description: "", resolution: "" }]);
   }, [user?.uid]);
 
   // Auto-Save do Rascunho
@@ -90,30 +80,33 @@ export default function PersonalRegistryPage() {
 
   const updateRow = useCallback((id: string, updates: Partial<RowData>) => {
     setRows(prev => {
-      const newRows = prev.map(row => row.id === id ? { ...row, ...updates } : row);
-      const changedRow = newRows.find(r => r.id === id);
-      const isLast = newRows.length > 0 && newRows[newRows.length - 1].id === id;
-      
-      const hasAnyData = changedRow && Object.values(updates).some(v => v !== "");
+      return prev.map(row => {
+        if (row.id !== id) return row;
+        
+        let newRow = { ...row, ...updates };
 
-      if (isLast && hasAnyData) {
-        return [
-          ...newRows,
-          { 
-            id: Math.random().toString(36).substr(2, 9), 
-            unitName: "", 
-            sector: "", 
-            categoryName: "", 
-            subcategoryName: "", 
-            itemName: "", 
-            freeText: "", 
-            details: "" 
-          }
-        ];
-      }
-      return newRows;
+        // Lógica de Cascata: Limpar filhos se o pai mudar
+        if (updates.unitId !== undefined && updates.unitId !== row.unitId) {
+          newRow.sectorId = "";
+        }
+        if (updates.categoryId !== undefined && updates.categoryId !== row.categoryId) {
+          newRow.subcategoryId = "";
+          newRow.itemId = "";
+        }
+        if (updates.subcategoryId !== undefined && updates.subcategoryId !== row.subcategoryId) {
+          newRow.itemId = "";
+        }
+
+        return newRow;
+      });
     });
-  }, []);
+
+    // Adicionar nova linha se estiver digitando na última
+    const row = rows.find(r => r.id === id);
+    if (rows[rows.length - 1].id === id && Object.values(updates).some(v => v !== "")) {
+      setRows(prev => [...prev, { id: Math.random().toString(36).substr(2, 9), unitId: "", sectorId: "", categoryId: "", subcategoryId: "", itemId: "", description: "", resolution: "" }]);
+    }
+  }, [rows]);
 
   const removeRow = (id: string) => {
     if (rows.length <= 1) return;
@@ -121,15 +114,14 @@ export default function PersonalRegistryPage() {
   };
 
   const handleBatchSave = async () => {
-    const rowsToSave = rows.filter(r => r.categoryName && (r.freeText || r.details));
+    const rowsToSave = rows.filter(r => r.categoryId && (r.description || r.resolution));
 
     if (rowsToSave.length === 0) {
-      toast({ title: "Nenhum dado válido", description: "Preencha ao menos uma categoria e um relato/resolução.", variant: "destructive" });
+      toast({ title: "Dados incompletos", description: "Preencha ao menos uma categoria e um relato.", variant: "destructive" });
       return;
     }
 
     if (!user || !db) return;
-
     setIsSavingAll(true);
     const batch = writeBatch(db);
 
@@ -138,29 +130,39 @@ export default function PersonalRegistryPage() {
         const demandId = Math.random().toString(36).substr(2, 9);
         const demandRef = doc(db, "users", user.uid, "demands", demandId);
         
+        const catName = categories.data?.find(c => c.id === row.categoryId)?.name || "";
+        const subName = subcategories.data?.find(s => s.id === row.subcategoryId)?.name || "";
+        const itemName = items.data?.find(i => i.id === row.itemId)?.name || "";
+        const unitName = units.data?.find(u => u.id === row.unitId)?.name || "";
+        const sectorName = sectors.data?.find(s => s.id === row.sectorId)?.name || "";
+
         batch.set(demandRef, {
-          title: `${row.categoryName} - ${row.itemName || row.subcategoryName || 'Geral'}`,
-          description: row.freeText || `Demanda de ${row.categoryName}`,
-          resolution: row.details || "Pendente",
           id: demandId,
           userId: user.uid,
           timestamp: new Date().toISOString(),
+          title: `${catName} - ${itemName || subName || 'Geral'}`,
+          description: row.description || `Demanda de ${catName}`,
+          resolution: row.resolution || "Pendente",
           source: 'structured',
-          category: row.categoryName,
-          subcategory: row.subcategoryName,
-          item: row.itemName,
-          unit: row.unitName,
-          sector: row.sector
+          unitId: row.unitId,
+          unitName,
+          sectorId: row.sectorId,
+          sectorName,
+          categoryId: row.categoryId,
+          categoryName: catName,
+          subcategoryId: row.subcategoryId,
+          subcategoryName: subName,
+          itemId: row.itemId,
+          itemName: itemName
         });
       });
 
       await batch.commit();
       localStorage.removeItem(`${STORAGE_KEY}_${user.uid}`);
-      toast({ title: "Plantão Finalizado", description: `${rowsToSave.length} demandas salvas no seu histórico.` });
+      toast({ title: "Plantão Finalizado!", description: `${rowsToSave.length} registros salvos.` });
       router.push("/demands/history");
     } catch (error: any) {
-      console.error(error);
-      toast({ title: "Erro no Salvamento", description: error.message, variant: "destructive" });
+      toast({ title: "Erro no salvamento", description: error.message, variant: "destructive" });
     } finally {
       setIsSavingAll(false);
     }
@@ -175,125 +177,117 @@ export default function PersonalRegistryPage() {
             <SidebarTrigger />
             <div className="flex items-center gap-2">
               <Zap className="w-5 h-5 text-primary" />
-              <h1 className="text-lg font-semibold">Novo Registro de Plantão</h1>
+              <h1 className="text-lg font-semibold">Meu Plantão Inteligente</h1>
             </div>
             <div className="ml-auto flex items-center gap-3">
               {isLoadedFromDraft && (
-                <Badge variant="outline" className="text-[10px] bg-amber-50 text-amber-600 border-amber-200">
-                  <Save className="w-3 h-3 mr-1" /> Rascunho Recuperado
+                <Badge variant="outline" className="text-[10px] bg-blue-50 text-blue-600 border-blue-200">
+                  <History className="w-3 h-3 mr-1" /> Rascunho Ativo
                 </Badge>
               )}
-              <Button onClick={handleBatchSave} disabled={isSavingAll} className="gap-2 font-bold shadow-md">
+              <Button onClick={handleBatchSave} disabled={isSavingAll} className="gap-2 font-bold">
                 {isSavingAll ? <Loader2 className="w-4 h-4 animate-spin" /> : <ClipboardCheck className="w-4 h-4" />}
-                Finalizar Plantão ({rows.filter(r => r.categoryName && (r.freeText || r.details)).length})
+                Salvar Tudo ({rows.filter(r => r.categoryId && (r.description || r.resolution)).length})
               </Button>
             </div>
           </header>
           
-          <main className="flex-1 overflow-hidden flex flex-col p-4 md:p-6 bg-slate-50/30">
+          <main className="flex-1 overflow-hidden flex flex-col p-4 bg-slate-50/40">
             <Card className="border shadow-lg flex-1 flex flex-col overflow-hidden bg-card">
               <ScrollArea className="flex-1 w-full">
-                <div className="min-w-[1400px]">
+                <div className="min-w-[1500px]">
                   <Table>
                     <TableHeader className="bg-muted/80 sticky top-0 z-20">
                       <TableRow className="hover:bg-transparent">
-                        <TableHead className="w-[180px] text-xs font-bold uppercase tracking-wider">Unidade</TableHead>
-                        <TableHead className="w-[140px] text-xs font-bold uppercase tracking-wider">Setor</TableHead>
-                        <TableHead className="w-[180px] text-xs font-bold uppercase tracking-wider text-primary">Categoria</TableHead>
-                        <TableHead className="w-[180px] text-xs font-bold uppercase tracking-wider">Subcategoria</TableHead>
-                        <TableHead className="w-[160px] text-xs font-bold uppercase tracking-wider">Item</TableHead>
-                        <TableHead className="flex-1 text-xs font-bold uppercase tracking-wider">Relato (O que houve?)</TableHead>
-                        <TableHead className="w-[300px] text-xs font-bold uppercase tracking-wider">Resolução (O que foi feito?)</TableHead>
+                        <TableHead className="w-[180px] text-xs font-bold uppercase">Unidade</TableHead>
+                        <TableHead className="w-[160px] text-xs font-bold uppercase">Setor</TableHead>
+                        <TableHead className="w-[180px] text-xs font-bold uppercase text-primary">Categoria</TableHead>
+                        <TableHead className="w-[180px] text-xs font-bold uppercase text-primary">Subcategoria</TableHead>
+                        <TableHead className="w-[160px] text-xs font-bold uppercase text-primary">Item</TableHead>
+                        <TableHead className="flex-1 text-xs font-bold uppercase">Relato do Problema</TableHead>
+                        <TableHead className="w-[350px] text-xs font-bold uppercase">Ação Realizada</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {rows.map((row, index) => (
-                        <TableRow key={row.id} className={cn("group transition-colors", index === rows.length - 1 && "border-l-4 border-l-primary/50 bg-primary/5")}>
-                          <TableCell className="p-2">
-                            <Select value={row.unitName} onValueChange={(val) => updateRow(row.id, { unitName: val })}>
+                        <TableRow key={row.id} className={cn("group", index === rows.length - 1 && "bg-primary/5")}>
+                          <TableCell className="p-1">
+                            <Select value={row.unitId} onValueChange={(val) => updateRow(row.id, { unitId: val })}>
                               <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder="Selecione..." />
+                                <SelectValue placeholder="Unidade..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {units.data?.map(u => <SelectItem key={u.id} value={u.name}>{u.name}</SelectItem>)}
-                                {units.data?.length === 0 && <SelectItem value="_" disabled>Configure em ajustes</SelectItem>}
+                                {units.data?.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </TableCell>
                           
-                          <TableCell className="p-2">
-                            <Select value={row.sector} onValueChange={(val) => updateRow(row.id, { sector: val })}>
+                          <TableCell className="p-1">
+                            <Select value={row.sectorId} onValueChange={(val) => updateRow(row.id, { sectorId: val })} disabled={!row.unitId}>
                               <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder="Setor..." />
+                                <SelectValue placeholder={row.unitId ? "Setor..." : "---"} />
                               </SelectTrigger>
                               <SelectContent>
-                                {sectors.data?.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
-                                {sectors.data?.length === 0 && <SelectItem value="_" disabled>Configure em ajustes</SelectItem>}
+                                {sectors.data?.filter(s => s.parentId === row.unitId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </TableCell>
 
-                          <TableCell className="p-2">
-                            <Select value={row.categoryName} onValueChange={(val) => updateRow(row.id, { categoryName: val })}>
+                          <TableCell className="p-1">
+                            <Select value={row.categoryId} onValueChange={(val) => updateRow(row.id, { categoryId: val })}>
                               <SelectTrigger className="border-none bg-transparent h-9 text-xs font-bold text-primary focus:ring-1">
                                 <SelectValue placeholder="Categoria..." />
                               </SelectTrigger>
                               <SelectContent>
-                                {categories.data?.map(c => <SelectItem key={c.id} value={c.name}>{c.name}</SelectItem>)}
-                                {categories.data?.length === 0 && <SelectItem value="_" disabled>Configure em ajustes</SelectItem>}
+                                {categories.data?.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </TableCell>
 
-                          <TableCell className="p-2">
-                            <Select value={row.subcategoryName} onValueChange={(val) => updateRow(row.id, { subcategoryName: val })}>
+                          <TableCell className="p-1">
+                            <Select value={row.subcategoryId} onValueChange={(val) => updateRow(row.id, { subcategoryId: val })} disabled={!row.categoryId}>
                               <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder="Subcat..." />
+                                <SelectValue placeholder={row.categoryId ? "Subcat..." : "---"} />
                               </SelectTrigger>
                               <SelectContent>
-                                {subcategories.data?.map(s => <SelectItem key={s.id} value={s.name}>{s.name}</SelectItem>)}
+                                {subcategories.data?.filter(s => s.parentId === row.categoryId).map(s => <SelectItem key={s.id} value={s.id}>{s.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </TableCell>
 
-                          <TableCell className="p-2">
-                            <Select value={row.itemName} onValueChange={(val) => updateRow(row.id, { itemName: val })}>
+                          <TableCell className="p-1">
+                            <Select value={row.itemId} onValueChange={(val) => updateRow(row.id, { itemId: val })} disabled={!row.subcategoryId}>
                               <SelectTrigger className="border-none bg-transparent h-9 text-xs focus:ring-1">
-                                <SelectValue placeholder="Item..." />
+                                <SelectValue placeholder={row.subcategoryId ? "Item..." : "---"} />
                               </SelectTrigger>
                               <SelectContent>
-                                {items.data?.map(i => <SelectItem key={i.id} value={i.name}>{i.name}</SelectItem>)}
+                                {items.data?.filter(i => i.parentId === row.subcategoryId).map(i => <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>)}
                               </SelectContent>
                             </Select>
                           </TableCell>
 
-                          <TableCell className="p-2">
+                          <TableCell className="p-1">
                             <Input 
-                              placeholder="Descreva o problema" 
+                              placeholder="Descreva o problema..." 
                               className="border-none bg-transparent h-9 text-xs focus:ring-1" 
-                              value={row.freeText} 
-                              onChange={(e) => updateRow(row.id, { freeText: e.target.value })} 
+                              value={row.description} 
+                              onChange={(e) => updateRow(row.id, { description: e.target.value })} 
                             />
                           </TableCell>
 
-                          <TableCell className="p-2">
+                          <TableCell className="p-1">
                             <Input 
-                              placeholder="Descreva a solução" 
+                              placeholder="Descreva a solução..." 
                               className="border-none bg-transparent h-9 text-xs focus:ring-1" 
-                              value={row.details} 
-                              onChange={(e) => updateRow(row.id, { details: e.target.value })} 
+                              value={row.resolution} 
+                              onChange={(e) => updateRow(row.id, { resolution: e.target.value })} 
                             />
                           </TableCell>
 
-                          <TableCell className="p-2">
+                          <TableCell className="p-1">
                             {index !== rows.length - 1 && (
-                              <Button 
-                                size="icon" 
-                                variant="ghost" 
-                                className="h-8 w-8 text-muted-foreground hover:text-destructive transition-colors" 
-                                onClick={() => removeRow(row.id)}
-                              >
+                              <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeRow(row.id)}>
                                 <Trash2 className="w-4 h-4" />
                               </Button>
                             )}
@@ -306,12 +300,11 @@ export default function PersonalRegistryPage() {
                 <ScrollBar orientation="horizontal" />
               </ScrollArea>
               
-              <div className="p-4 bg-muted/20 border-t flex justify-between items-center text-xs text-muted-foreground">
+              <div className="p-4 bg-muted/20 border-t flex justify-between items-center text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
                 <div className="flex gap-4">
-                  <span>Dica: Pressione Enter no último campo para adicionar nova linha.</span>
-                  <span className="flex items-center gap-1 font-medium"><History className="w-3 h-3" /> O rascunho é salvo automaticamente em seu navegador.</span>
+                  <span className="flex items-center gap-1"><Info className="w-3 h-3" /> As opções são filtradas automaticamente com base nas seleções anteriores.</span>
                 </div>
-                <div className="font-bold text-primary">Total: {rows.length - 1} registros</div>
+                <div className="text-primary">{rows.length - 1} Registros no Rascunho</div>
               </div>
             </Card>
           </main>

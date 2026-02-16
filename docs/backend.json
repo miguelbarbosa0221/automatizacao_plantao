@@ -12,11 +12,16 @@
         "title": { "type": "string" },
         "description": { "type": "string" },
         "resolution": { "type": "string" },
-        "category": { "type": "string" },
-        "subcategory": { "type": "string" },
-        "item": { "type": "string" },
-        "unit": { "type": "string" },
-        "sector": { "type": "string" },
+        "categoryName": { "type": "string" },
+        "subcategoryName": { "type": "string" },
+        "itemName": { "type": "string" },
+        "unitName": { "type": "string" },
+        "sectorName": { "type": "string" },
+        "categoryId": { "type": "string" },
+        "subcategoryId": { "type": "string" },
+        "itemId": { "type": "string" },
+        "unitId": { "type": "string" },
+        "sectorId": { "type": "string" },
         "source": { "type": "string", "enum": ["structured", "free-text"] }
       },
       "required": ["id", "userId", "timestamp", "title", "description", "source"]
@@ -27,8 +32,8 @@
       "properties": {
         "id": { "type": "string" },
         "name": { "type": "string" },
-        "active": { "type": "boolean" },
-        "parentId": { "type": "string", "description": "ID do item pai, se aplicável (ex: categoria de uma subcategoria)" }
+        "parentId": { "type": "string", "description": "ID do item pai (ex: Unidade para Setor, Categoria para Subcategoria)" },
+        "active": { "type": "boolean" }
       },
       "required": ["id", "name", "active"]
     },
@@ -52,29 +57,29 @@
       "schema": "#/backend/entities/Profile",
       "description": "Perfil pessoal do usuário."
     },
-    "/users/{userId}/categories/{id}": {
-      "schema": "#/backend/entities/CatalogItem",
-      "description": "Categorias pessoais."
-    },
-    "/users/{userId}/subcategories/{id}": {
-      "schema": "#/backend/entities/CatalogItem",
-      "description": "Subcategorias pessoais."
-    },
-    "/users/{userId}/items/{id}": {
-      "schema": "#/backend/entities/CatalogItem",
-      "description": "Itens de hardware/software pessoais."
-    },
     "/users/{userId}/units/{id}": {
       "schema": "#/backend/entities/CatalogItem",
-      "description": "Unidades de atendimento pessoais."
+      "description": "Unidades."
     },
     "/users/{userId}/sectors/{id}": {
       "schema": "#/backend/entities/CatalogItem",
-      "description": "Setores internos pessoais."
+      "description": "Setores (Filho de Unidade)."
+    },
+    "/users/{userId}/categories/{id}": {
+      "schema": "#/backend/entities/CatalogItem",
+      "description": "Categorias."
+    },
+    "/users/{userId}/subcategories/{id}": {
+      "schema": "#/backend/entities/CatalogItem",
+      "description": "Subcategorias (Filha de Categoria)."
+    },
+    "/users/{userId}/items/{id}": {
+      "schema": "#/backend/entities/CatalogItem",
+      "description": "Itens (Filho de Subcategoria)."
     },
     "/users/{userId}/demands/{demandId}": {
       "schema": "#/backend/entities/Demand",
-      "description": "Chamados pessoais do usuário."
+      "description": "Chamados pessoais."
     }
   }
 }
