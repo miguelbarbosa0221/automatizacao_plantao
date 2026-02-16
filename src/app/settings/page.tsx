@@ -216,7 +216,7 @@ export default function SettingsPage() {
                           onKeyDown={(e) => e.key === 'Enter' && handleAdd('unit')}
                           className="h-9 text-xs"
                         />
-                        <Button size="sm" onClick={() => handleAdd('unit')} disabled={isLoading}><Plus className="w-4 h-4" /></Button>
+                        <button className="bg-primary text-primary-foreground p-2 rounded hover:bg-primary/90" onClick={() => handleAdd('unit')} disabled={isLoading}><Plus className="w-4 h-4" /></button>
                       </div>
                     </CardHeader>
                     <ScrollArea className="flex-1">
@@ -249,7 +249,7 @@ export default function SettingsPage() {
                             onKeyDown={(e) => e.key === 'Enter' && handleAdd('sector', selectedUnitId)}
                             className="h-9 text-xs"
                           />
-                          <Button size="sm" onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading}><Plus className="w-4 h-4" /></Button>
+                          <button className="bg-primary text-primary-foreground p-2 rounded hover:bg-primary/90" onClick={() => handleAdd('sector', selectedUnitId)} disabled={isLoading}><Plus className="w-4 h-4" /></button>
                         </div>
                       ) : <div className="h-9 mt-2 text-xs text-muted-foreground italic flex items-center gap-2"><Info className="w-3 h-3" /> Selecione uma unidade.</div>}
                     </CardHeader>
@@ -285,7 +285,7 @@ export default function SettingsPage() {
                           onKeyDown={(e) => e.key === 'Enter' && handleAdd('category')}
                           className="h-8 text-[10px]"
                         />
-                        <Button size="icon" className="h-8 w-8" onClick={() => handleAdd('category')}><Plus className="w-4 h-4" /></Button>
+                        <button className="bg-primary text-primary-foreground p-1 rounded hover:bg-primary/90" onClick={() => handleAdd('category')} disabled={isLoading}><Plus className="w-4 h-4" /></button>
                       </div>
                     </CardHeader>
                     <ScrollArea className="flex-1">
@@ -317,7 +317,7 @@ export default function SettingsPage() {
                             onKeyDown={(e) => e.key === 'Enter' && handleAdd('subcategory', selectedCategoryId)}
                             className="h-8 text-[10px]"
                           />
-                          <Button size="icon" className="h-8 w-8" onClick={() => handleAdd('subcategory', selectedCategoryId)}><Plus className="w-4 h-4" /></Button>
+                          <button className="bg-primary text-primary-foreground p-1 rounded hover:bg-primary/90" onClick={() => handleAdd('subcategory', selectedCategoryId)} disabled={isLoading}><Plus className="w-4 h-4" /></button>
                         </div>
                       ) : <div className="h-8 mt-2" />}
                     </CardHeader>
@@ -356,7 +356,7 @@ export default function SettingsPage() {
                             onKeyDown={(e) => e.key === 'Enter' && handleAdd('item', selectedSubcategoryId)}
                             className="h-8 text-[10px]"
                           />
-                          <Button size="icon" className="h-8 w-8" onClick={() => handleAdd('item', selectedSubcategoryId)}><Plus className="w-4 h-4" /></Button>
+                          <button className="bg-primary text-primary-foreground p-1 rounded hover:bg-primary/90" onClick={() => handleAdd('item', selectedSubcategoryId)} disabled={isLoading}><Plus className="w-4 h-4" /></button>
                         </div>
                       ) : <div className="h-8 mt-2" />}
                     </CardHeader>
