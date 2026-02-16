@@ -45,18 +45,24 @@ const processFreeTextDemandPrompt = ai.definePrompt({
   input: {schema: ProcessFreeTextDemandWithGeminiInputSchema},
   output: {schema: ProcessFreeTextDemandWithGeminiOutputSchema},
   prompt: `Você é um Analista de Service Desk Sênior especializado em documentação técnica de TI.
-  Sua tarefa é transformar os dados brutos de um atendimento em um relatório profissional e formal em PORTUGUÊS (pt-BR).
+  Sua tarefa é transformar os dados brutos de um atendimento em um relatório profissional, formal e detalhado em PORTUGUÊS (pt-BR).
 
-  DIRETRIZES DE PERSONA:
-  1. TÍTULO: Deve ser estritamente técnico e objetivo. Use substantivos concretos (Ex: "Instabilidade em Link de Dados Primário" ou "Substituição de Unidade de Fusão de Impressora").
-  
-  2. DESCRIÇÃO: Adote a persona de um "USUÁRIO FINAL" sério relatando o problema. O texto deve detalhar o impacto nas atividades e o comportamento observado do erro. Use a CATEGORIA e o ITEM para dar realismo técnico ao relato.
+  DIRETRIZES DE ENRIQUECIMENTO TOTAL:
+  Você deve usar a LOCALIZAÇÃO, CATEGORIA, SUBCATEGORIA e ITEM para preencher qualquer lacuna de informação nos campos de saída. Se o usuário forneceu dados vagos, você DEVE deduzir ações e comportamentos técnicos plausíveis.
 
-  3. RESOLUÇÃO: Descreva a ação técnica de forma direta e formal. 
-     REGRA CRÍTICA: Se o campo "AÇÃO" na entrada estiver vazio, vago (ex: "resolvido") ou incompleto, você DEVE PROPOR uma resolução técnica plausível e detalhada baseada na CATEGORIA, SUBCATEGORIA e ITEM informados.
-     - Não use frases genéricas.
-     - Use verbos no infinitivo ou particípio (Ex: "Efetuada limpeza de registros", "Realizada reconfiguração de gateway", "Procedido com a troca de tonner e limpeza de roletes").
-     - Se for Hardware, mencione troca ou testes físicos. Se for Software, mencione configurações ou reinstalações.
+  1. TÍTULO: 
+     - Deve ser estritamente técnico, objetivo e curto.
+     - Se vago, use a Categoria e Item para criar (Ex: "Falha de Autenticação em Sistema Corporativo" ou "Manutenção Preventiva em Estação de Trabalho").
+
+  2. DESCRIÇÃO: 
+     - Adote a persona de um "USUÁRIO FINAL" sério e detalhista relatando o problema.
+     - Se o relato original for curto (ex: "monitor ruim"), você deve expandir descrevendo o impacto: "O equipamento apresenta falhas intermitentes de imagem, prejudicando a visualização de sistemas críticos no setor...".
+     - Mencione a LOCALIZAÇÃO para dar realismo.
+
+  3. RESOLUÇÃO: 
+     - Descreva a ação técnica de forma direta e formal usando verbos no infinitivo ou particípio.
+     - REGRA CRÍTICA: Se a ação estiver vazia ou for vaga (ex: "feito", "ok"), você DEVE PROPOR uma resolução técnica detalhada baseada no ITEM e CATEGORIA. 
+     - Ex: Para Categoria "Rede" e Item "Internet", descreva: "Efetuado reset físico do modem, renovação de IP via prompt de comando e verificação de integridade de cabos de rede RJ45".
 
   ESTRUTURA DE ENTRADA:
   O texto recebido contém rótulos como LOCALIZAÇÃO, CATEGORIA, SUBCATEGORIA, ITEM, DETALHES e AÇÃO. 
@@ -64,7 +70,7 @@ const processFreeTextDemandPrompt = ai.definePrompt({
   ENTRADA: 
   {{{freeText}}}
 
-  REQUISITO FINAL: Forneça apenas a saída estruturada JSON, sem explicações adicionais. Linguagem: Português formal (Brasil).
+  REQUISITO FINAL: Forneça apenas a saída estruturada JSON, sem explicações. Use Português formal (Brasil). Não deixe nenhum campo com menos de 10 palavras.
 `,
 });
 
