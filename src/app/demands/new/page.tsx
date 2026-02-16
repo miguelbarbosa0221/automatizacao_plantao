@@ -11,14 +11,15 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
 import { ScrollArea, ScrollBar } from "@/components/ui/scroll-area"
 import { useState, useMemo, useCallback, useEffect } from "react"
-import { Loader2, Zap, ClipboardCheck, Trash2, Save, History, Info } from "lucide-react"
+import { Loader2, Zap, ClipboardCheck, Trash2, Save, History, Info, Sparkles } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { useFirestore, useUser, useCollection, useMemoFirebase } from "@/firebase"
 import { collection, doc, writeBatch } from "firebase/firestore"
 import { cn } from "@/lib/utils"
 import { useRouter } from "next/navigation"
+import { processFreeTextDemandWithGemini } from "@/ai/flows/process-free-text-demand-with-gemini"
 
-const STORAGE_KEY = "plantao_ai_personal_draft_v2";
+const STORAGE_KEY = "plantao_ai_personal_draft_v3";
 
 interface RowData {
   id: string;
@@ -29,6 +30,8 @@ interface RowData {
   itemId: string;
   description: string;
   resolution: string;
+  isProcessing?: boolean;
+  aiTitle?: string;
 }
 
 interface CatalogItem {
@@ -80,7 +83,7 @@ export default function PersonalRegistryPage() {
 
   const updateRow = useCallback((id: string, updates: Partial<RowData>) => {
     setRows(prev => {
-      return prev.map(row => {
+      const updated = prev.map(row => {
         if (row.id !== id) return row;
         
         let newRow = { ...row, ...updates };
@@ -99,14 +102,60 @@ export default function PersonalRegistryPage() {
 
         return newRow;
       });
-    });
 
-    // Adicionar nova linha se estiver digitando na última
+      // Adicionar nova linha se a última linha foi preenchida
+      const lastRow = updated[updated.length - 1];
+      const hasAnyData = lastRow.categoryId || lastRow.unitId || lastRow.description;
+      
+      if (lastRow.id === id && hasAnyData) {
+        return [...updated, { id: Math.random().toString(36).substr(2, 9), unitId: "", sectorId: "", categoryId: "", subcategoryId: "", itemId: "", description: "", resolution: "" }];
+      }
+      
+      return updated;
+    });
+  }, []);
+
+  const handleAIRow = async (id: string) => {
     const row = rows.find(r => r.id === id);
-    if (rows[rows.length - 1].id === id && Object.values(updates).some(v => v !== "")) {
-      setRows(prev => [...prev, { id: Math.random().toString(36).substr(2, 9), unitId: "", sectorId: "", categoryId: "", subcategoryId: "", itemId: "", description: "", resolution: "" }]);
+    if (!row) return;
+
+    if (!row.description && !row.categoryId) {
+      toast({ title: "Dados insuficientes", description: "Preencha ao menos uma categoria ou relato para a IA processar.", variant: "destructive" });
+      return;
     }
-  }, [rows]);
+
+    // Get names for context
+    const catName = categories.data?.find(c => c.id === row.categoryId)?.name || "";
+    const subName = subcategories.data?.find(s => s.id === row.subcategoryId)?.name || "";
+    const itemName = items.data?.find(i => i.id === row.itemId)?.name || "";
+    const unitName = units.data?.find(u => u.id === row.unitId)?.name || "";
+    const sectorName = sectors.data?.find(s => s.id === row.sectorId)?.name || "";
+
+    const contextText = `
+      LOCALIZAÇÃO: ${unitName} / ${sectorName}
+      CATEGORIA: ${catName}
+      SUBCATEGORIA: ${subName}
+      ITEM: ${itemName}
+      DETALHES DO RELATO: ${row.description || "Sem descrição"}
+      AÇÃO ATUAL: ${row.resolution || "Pendente"}
+    `.trim();
+
+    updateRow(id, { isProcessing: true });
+
+    try {
+      const result = await processFreeTextDemandWithGemini({ freeText: contextText });
+      updateRow(id, { 
+        description: result.description, 
+        resolution: result.resolution,
+        aiTitle: result.title,
+        isProcessing: false 
+      });
+      toast({ title: "IA: Sucesso!", description: "Dados enriquecidos com inteligência artificial." });
+    } catch (e: any) {
+      updateRow(id, { isProcessing: false });
+      toast({ title: "Erro na IA", description: "Não foi possível processar agora. Tente novamente.", variant: "destructive" });
+    }
+  };
 
   const removeRow = (id: string) => {
     if (rows.length <= 1) return;
@@ -140,7 +189,7 @@ export default function PersonalRegistryPage() {
           id: demandId,
           userId: user.uid,
           timestamp: new Date().toISOString(),
-          title: `${catName} - ${itemName || subName || 'Geral'}`,
+          title: row.aiTitle || `${catName} - ${itemName || subName || 'Geral'}`,
           description: row.description || `Demanda de ${catName}`,
           resolution: row.resolution || "Pendente",
           source: 'structured',
@@ -206,6 +255,7 @@ export default function PersonalRegistryPage() {
                         <TableHead className="w-[160px] text-xs font-bold uppercase text-primary">Item</TableHead>
                         <TableHead className="flex-1 text-xs font-bold uppercase">Relato do Problema</TableHead>
                         <TableHead className="w-[350px] text-xs font-bold uppercase">Ação Realizada</TableHead>
+                        <TableHead className="w-[80px] text-center text-xs font-bold uppercase">IA</TableHead>
                         <TableHead className="w-[50px]"></TableHead>
                       </TableRow>
                     </TableHeader>
@@ -285,7 +335,26 @@ export default function PersonalRegistryPage() {
                             />
                           </TableCell>
 
-                          <TableCell className="p-1">
+                          <TableCell className="p-1 text-center">
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className={cn(
+                                "h-8 w-8 text-primary hover:bg-primary/10 transition-all",
+                                row.isProcessing && "animate-pulse"
+                              )}
+                              onClick={() => handleAIRow(row.id)}
+                              disabled={row.isProcessing}
+                            >
+                              {row.isProcessing ? (
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                              ) : (
+                                <Sparkles className="w-4 h-4" />
+                              )}
+                            </Button>
+                          </TableCell>
+
+                          <TableCell className="p-1 text-center">
                             {index !== rows.length - 1 && (
                               <Button size="icon" variant="ghost" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => removeRow(row.id)}>
                                 <Trash2 className="w-4 h-4" />
@@ -302,7 +371,7 @@ export default function PersonalRegistryPage() {
               
               <div className="p-4 bg-muted/20 border-t flex justify-between items-center text-[10px] text-muted-foreground uppercase font-bold tracking-wider">
                 <div className="flex gap-4">
-                  <span className="flex items-center gap-1"><Info className="w-3 h-3" /> As opções são filtradas automaticamente com base nas seleções anteriores.</span>
+                  <span className="flex items-center gap-1"><Info className="w-3 h-3" /> Clique no ícone de IA (Sparkles) para melhorar o relato e sugerir resoluções.</span>
                 </div>
                 <div className="text-primary">{rows.length - 1} Registros no Rascunho</div>
               </div>
